@@ -6,7 +6,7 @@ import { StatusBadge, TypeBadge, useObjectUrl } from '../components/ui'
 import { aiImage, blobToBase64, CHAT_URL, PROVIDER_LABEL } from '../lib/ai'
 import { runAutoChecks, videoDuration } from '../lib/checks'
 import { db, getBlob, nowIso, promptKey, putBlob, uid, type CheckResult, type Item, type SavedPrompt } from '../lib/db'
-import { uploadFile } from '../lib/drive'
+import { uploadItemToDrive } from '../lib/driveItems'
 import {
   analyzeAlpha, blobToCanvas, cropToAspect, DEFAULT_BG_OPTIONS, dHash, downscaleLongSide, encodeJpeg, encodePng,
   removeBackground, thumbnail, tightCrop, upscaleLongSide, type BgRemoveOptions,
@@ -393,13 +393,16 @@ function SourceStep({ item, source, onSource, onDirectFinal }: {
               </button>
             ) : (
               <>
-                <p className="small muted">① 버튼을 누르면 프롬프트가 복사되고 AI가 열려요 → ② 붙여넣어 그림 생성 → ③ 그림을 다운로드해서 왼쪽에 끌어놓기</p>
+                <p className="small muted">① 버튼을 누르면 프롬프트가 복사되고 AI가 열려요 (이미 열려 있으면 “복사만”) → ② 붙여넣어 그림 생성 → ③ 그림을 다운로드해서 왼쪽에 끌어놓기</p>
                 <button className="primary" onClick={() => sendTo(s.manualChat === 'claude' ? 'openai' : s.manualChat)}>
                   📋 복사하고 {PROVIDER_LABEL[s.manualChat === 'claude' ? 'openai' : s.manualChat]} 열기
                 </button>
-                <button className="small" onClick={() => sendTo(s.manualChat === 'gemini' ? 'openai' : 'gemini')}>
-                  {PROVIDER_LABEL[s.manualChat === 'gemini' ? 'openai' : 'gemini']}로 열기
-                </button>
+                <div className="row">
+                  <button className="small" onClick={() => copyText(fullPrompt).then((ok) => toast(ok ? '복사했어요. 열려 있는 AI 창에 붙여넣으세요.' : '복사가 막혔어요.', ok ? 'info' : 'bad'))}>📋 복사만</button>
+                  <button className="small" onClick={() => sendTo(s.manualChat === 'gemini' ? 'openai' : 'gemini')}>
+                    {PROVIDER_LABEL[s.manualChat === 'gemini' ? 'openai' : 'gemini']}로 열기
+                  </button>
+                </div>
               </>
             )}
             <div className="note small">
@@ -761,10 +764,11 @@ function ReviewStep({ item, patch, final, others, save, openWork }: {
     if (!final) return
     toast('Drive에 올리는 중…', 'info')
     try {
-      const name = `${safeFileName(item.title)}_${item.id.slice(0, 6)}.${SPECS[item.type].ext}`
-      const r = await uploadFile(final, name, [TYPE_FOLDER[item.type], ymd().slice(0, 7)], item.driveFileId)
-      await save({ driveFileId: r.id, driveLink: r.webViewLink })
-      toast('☁️ Drive에 저장했어요.')
+      const it = await save()
+      await uploadItemToDrive(it, final)
+      const fresh = await db.items.get(it.id)
+      patch({ driveFileId: fresh?.driveFileId, driveLink: fresh?.driveLink })
+      toast(`☁️ Drive “${TYPE_FOLDER[item.type]}” 폴더에 저장했어요.`)
     } catch (e) { toast(`Drive 오류: ${(e as Error).message}`, 'bad') }
   }
 

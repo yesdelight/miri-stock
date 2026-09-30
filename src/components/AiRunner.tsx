@@ -98,8 +98,9 @@ export function AiRunner({ label, build, onResult, disabled, needsImage, primary
               <div className="row">
                 <button className="primary small" onClick={() => sendTo(s.manualChat)}>📋 복사하고 {PROVIDER_LABEL[s.manualChat]} 열기</button>
                 {others.map((p) => <button key={p} className="small" onClick={() => sendTo(p)}>{PROVIDER_LABEL[p]}</button>)}
+                <button className="small" onClick={async () => toast((await copyText(fullPrompt)) ? '복사했어요. 열려 있는 채팅창에 붙여넣으세요.' : '복사가 막혔어요. “프롬프트 보기”에서 직접 복사하세요.', 'info')}>📋 복사만</button>
               </div>
-              <span className="small muted">열린 창에 붙여넣고 보내세요{needsImage ? '. 검수할 이미지 파일도 같이 첨부해요' : ''}.</span>
+              <span className="small muted">이미 채팅창을 열어 뒀다면 “복사만”을 누르세요. 열린 창에 붙여넣고 보내세요{needsImage ? '. 검수할 이미지 파일도 같이 첨부해요' : ''}.</span>
             </div>
           </div>
           <div className="manual-step">
