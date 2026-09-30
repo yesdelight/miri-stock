@@ -111,7 +111,7 @@ function Thumb({ item, onClick, pick }: { item: Item; onClick: () => void; pick?
       <div className="img">{url ? <img src={url} alt={item.title} /> : <span className="muted small">{item.type === 'video' ? '🎬' : '—'}</span>}</div>
       <div className="meta">
         <b style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title || '(제목 없음)'}</b>
-        <div className="row" style={{ gap: 4 }}><TypeBadge type={item.type} /><StatusBadge status={item.status} />{item.driveFileId && <span className="badge ok">☁️ Drive</span>}</div>
+        <div className="row" style={{ gap: 4 }}><TypeBadge type={item.type} /><StatusBadge status={item.status} />{item.driveFileId && <span className="badge ok">☁️ Drive</span>}{!!item.fileLost?.length && <span className="badge bad" title="저장된 파일을 읽을 수 없어요. 열어서 다시 만들어 주세요.">⚠️ 파일 다시 필요</span>}</div>
         <span className="muted">{item.uploadedAt ? `업로드 ${item.uploadedAt}` : item.createdAt.slice(0, 10)}</span>
       </div>
     </div>

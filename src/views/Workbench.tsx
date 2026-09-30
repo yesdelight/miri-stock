@@ -5,7 +5,7 @@ import { toast } from '../components/toast'
 import { StatusBadge, TypeBadge, useObjectUrl } from '../components/ui'
 import { aiImage, blobToBase64, CHAT_URL, PROVIDER_LABEL } from '../lib/ai'
 import { runAutoChecks, videoDuration } from '../lib/checks'
-import { db, getBlob, nowIso, promptKey, putBlob, uid, type CheckResult, type Item, type SavedPrompt } from '../lib/db'
+import { db, getBlob, nowIso, promptKey, putBlob, toMemoryBlob, uid, type CheckResult, type Item, type SavedPrompt } from '../lib/db'
 import { uploadItemToDrive } from '../lib/driveItems'
 import {
   analyzeAlpha, blobToCanvas, edgeContact, cropToAspect, DEFAULT_BG_OPTIONS, dHash, downscaleLongSide, encodeJpeg, encodePng,
@@ -57,7 +57,11 @@ export function Workbench({ start, openWork }: { start: WorkbenchStart; openWork
   const [source, setSource] = useState<Blob | null>(null)
   const [final, setFinal] = useState<Blob | null>(null)
   const [saved, setSaved] = useState(false)
+  const [saveError, setSaveError] = useState('')
   const [moving, setMoving] = useState(false)
+  // 이미 저장한 파일은 다시 쓰지 않음(큰 파일을 매 단계마다 다시 저장하지 않게)
+  const savedSource = useRef<Blob | null>(null)
+  const savedFinal = useRef<Blob | null>(null)
   const others = useLiveQuery(() => db.items.toArray(), []) ?? []
 
   useEffect(() => {
@@ -65,11 +69,19 @@ export function Workbench({ start, openWork }: { start: WorkbenchStart; openWork
     ;(async () => {
       const it = await db.items.get(start.itemId!)
       if (!it) return
-      setItem(it)
-      setSource((await getBlob(it.id, 'source')) ?? null)
-      setFinal((await getBlob(it.id, 'final')) ?? null)
+      const src = (await getBlob(it.id, 'source')) ?? null
+      const fin = (await getBlob(it.id, 'final')) ?? null
+      savedSource.current = src
+      savedFinal.current = fin
+      // 읽을 수 없는 파일 표시(예전 Safari 저장 문제)
+      const lost: ('source' | 'final')[] = []
+      if (!src && (it.fileLost?.includes('source') || it.bytes != null)) lost.push('source')
+      if (!fin && (it.fileLost?.includes('final') || it.bytes != null)) lost.push('final')
+      setItem({ ...it, fileLost: lost.length ? lost : undefined })
+      setSource(src)
+      setFinal(fin)
       setSaved(true)
-      setStep(it.status === 'making' ? 3 : 5)
+      setStep(lost.length ? (src ? 3 : 2) : it.status === 'making' ? 3 : 5)
     })()
   }, [start.itemId])
 
@@ -89,13 +101,32 @@ export function Workbench({ start, openWork }: { start: WorkbenchStart; openWork
     } else if (final && it.type === 'video') {
       await db.blobs.delete(`${it.id}:thumb`)
     }
-    if (source) await putBlob(it.id, 'source', source)
-    if (final) await putBlob(it.id, 'final', final)
+    if (source && source !== savedSource.current) { await putBlob(it.id, 'source', source); savedSource.current = source }
+    if (final && final !== savedFinal.current) { await putBlob(it.id, 'final', final); savedFinal.current = final }
+    // 새 파일로 저장됐으면 '파일 없음' 표시 해제
+    const lost = (it.fileLost ?? []).filter((k) => (k === 'source' ? !source : !final))
+    it.fileLost = lost.length ? lost : undefined
     await db.items.put(it)
     setItem(it)
     setSaved(true)
+    setSaveError('')
     return it
   }
+
+  const trySave = async (extra: Partial<Item> = {}) => {
+    try {
+      return await save(extra)
+    } catch (e) {
+      console.error(e)
+      const msg = (e as Error)?.message || String(e)
+      setSaveError(msg)
+      toast(`보관함에 저장하지 못했어요: ${msg}`, 'bad')
+      return null
+    }
+  }
+
+  // 아직 다시 만들지 않은 '읽을 수 없는 파일'
+  const lostNow = (item.fileLost ?? []).filter((k) => (k === 'source' ? !source : !final))
 
   // 단계별 완료 조건 — 다음으로 넘어가기 전에 무엇이 필요한지
   const done = [
@@ -120,15 +151,9 @@ export function Workbench({ start, openWork }: { start: WorkbenchStart; openWork
       patch({ promptLog: [...item.promptLog, { at: nowIso(), prompt: item.prompt, tool: 'manual' }] })
     }
     setMoving(true)
-    try {
-      if (saved || source) await save()
-    } catch (e) {
-      // 저장이 실패해도 단계는 넘어가고, 이유를 알려줌(작업 내용은 화면에 그대로 있음)
-      console.error(e)
-      toast(`보관함 저장 중 오류: ${(e as Error)?.message || e} — 작업 내용은 화면에 남아 있어요. 이 메시지를 알려 주세요.`, 'bad')
-    } finally {
-      setMoving(false)
-    }
+    // 저장이 실패해도 단계는 넘어가고, 위에 '저장 안 됨'과 이유를 보여줌(작업 내용은 화면에 그대로 있음)
+    if (saved || source) await trySave()
+    setMoving(false)
     setStep(n)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -142,7 +167,13 @@ export function Workbench({ start, openWork }: { start: WorkbenchStart; openWork
           <StatusBadge status={item.status} />
         </div>
         <div className="row">
-          <span className="small muted">{saved ? '✓ 보관함에 자동 저장' : '이미지를 올리면 자동 저장돼요'}</span>
+          {saveError ? (
+            <span className="row small" style={{ color: 'var(--bad)' }} title={saveError}>
+              ⚠️ 저장 안 됨 <button className="small" onClick={() => trySave().then((r) => r && toast('저장했어요.'))}>다시 저장</button>
+            </span>
+          ) : (
+            <span className="small muted">{saved ? '✓ 보관함에 자동 저장' : '이미지를 올리면 자동 저장돼요'}</span>
+          )}
           <button className="small" onClick={() => openWork({})}>＋ 새로 시작</button>
         </div>
       </div>
@@ -158,6 +189,17 @@ export function Workbench({ start, openWork }: { start: WorkbenchStart; openWork
         ))}
       </ol>
       <p className="muted small" style={{ marginTop: -6 }}>{step + 1}단계 · {STEPS[step].hint}</p>
+      {lostNow.length > 0 && (
+        <div className="note bad small row between">
+          <span>
+            ⚠️ 저장돼 있던 {lostNow.includes('source') ? '원본 이미지' : '완성 파일'}를 읽을 수 없어요(예전 버전의 Safari 저장 문제).{' '}
+            {lostNow.includes('source') ? '3단계에서 원본 파일을 다시 올려 주세요. 다운로드해 둔 파일이나 AI에서 받은 이미지를 쓰면 돼요.' : '4단계에서 “다시 처리”를 누르면 원본으로 다시 만들어져요.'}
+          </span>
+          {step !== (lostNow.includes('source') ? 2 : 3) && (
+            <button className="small" onClick={() => goto(lostNow.includes('source') ? 2 : 3)}>{lostNow.includes('source') ? '3단계로' : '4단계로'} →</button>
+          )}
+        </div>
+      )}
 
       {step === 0 && <PlanStep item={item} patch={patch} />}
       {step === 1 && <PromptStep item={item} patch={patch} others={others} />}
@@ -167,7 +209,7 @@ export function Workbench({ start, openWork }: { start: WorkbenchStart; openWork
       )}
       {step === 3 && <ProcessStep item={item} patch={patch} source={source} final={final} setFinal={setFinal} />}
       {step === 4 && <InfoStep item={item} patch={patch} />}
-      {step === 5 && <ReviewStep item={item} patch={patch} final={final} others={others} save={save} openWork={openWork} />}
+      {step === 5 && <ReviewStep item={item} patch={patch} final={final} others={others} save={trySave} openWork={openWork} goStep={goto} />}
 
       <div className="bottombar">
         <button onClick={() => goto(step - 1)} disabled={step === 0 || moving}>← 이전</button>
@@ -336,10 +378,13 @@ function SourceStep({ item, source, onSource, onDirectFinal }: {
   const fullPrompt = `${item.prompt ?? item.title}\n\n${PROMPT_RULES[item.type]}`
 
   const accept = item.type === 'video' ? 'video/mp4' : item.type === 'svg' ? 'image/*,.svg' : 'image/*'
-  const take = (f: File | Blob) => {
+  const take = async (file: File | Blob) => {
     setErr('')
-    if (item.type === 'video' && !f.type.startsWith('video/')) return setErr('동영상 파일(MP4)을 올려 주세요.')
-    if (item.type !== 'video' && !f.type.startsWith('image/')) return setErr('이미지 파일을 올려 주세요.')
+    if (item.type === 'video' && !file.type.startsWith('video/')) return setErr('동영상 파일(MP4)을 올려 주세요.')
+    if (item.type !== 'video' && !file.type.startsWith('image/')) return setErr('이미지 파일을 올려 주세요.')
+    // 올린 파일은 바로 메모리로 복사해서 사용(Safari에서 파일 참조가 끊기는 문제 방지)
+    const f = await toMemoryBlob(file)
+    if (!f) return setErr('파일을 읽을 수 없어요. 파일을 다시 선택해 주세요.')
     if (item.type === 'svg' && f.type === 'image/svg+xml') return onDirectFinal(f) // 이미 SVG면 벡터화 생략
     if (item.type === 'video') return onDirectFinal(f)
     onSource(f)
@@ -732,9 +777,16 @@ function InfoStep({ item, patch }: { item: Item; patch: (p: Partial<Item>) => vo
 }
 
 // ---------- 6. 검수·저장 ----------
-function ReviewStep({ item, patch, final, others, save, openWork }: {
-  item: Item; patch: (p: Partial<Item>) => void; final: Blob | null; others: Item[]; save: (p?: Partial<Item>) => Promise<Item>
-  openWork: (s: Omit<WorkbenchStart, 'key'>) => void
+// 검수 항목 → 고치러 갈 단계(0부터)
+const FIX_STEP: Record<string, number> = {
+  spec: 3, 'tight-crop': 3, 'bg-removed': 3, 'single-object': 3, 'not-cut': 2, 'no-transparency': 3,
+  'svg-colors': 3, 'svg-no-raster': 3, 'bg-rect': 3, 'no-names': 4, 'own-prompt': 1, 'no-prompt-abuse': 1,
+  'no-recolor': 2, 'one-format': 0,
+}
+
+function ReviewStep({ item, patch, final, others, save, openWork, goStep }: {
+  item: Item; patch: (p: Partial<Item>) => void; final: Blob | null; others: Item[]; save: (p?: Partial<Item>) => Promise<Item | null>
+  openWork: (s: Omit<WorkbenchStart, 'key'>) => void; goStep: (n: number) => void
 }) {
   const [running, setRunning] = useState(false)
   const [dhash, setDhash] = useState(item.dhash)
@@ -745,6 +797,7 @@ function ReviewStep({ item, patch, final, others, save, openWork }: {
   const run = async () => {
     setRunning(true)
     try {
+      if (!final) { patch({ autoChecks: [] }); return }
       let h = dhash
       if (final && item.type !== 'video') {
         const c = item.type === 'svg' ? await svgToCanvas(await final.text(), 600) : downscaleLongSide(await blobToCanvas(final), 600)
@@ -756,6 +809,10 @@ function ReviewStep({ item, patch, final, others, save, openWork }: {
         promptLogCount: item.promptLog.length, title: item.title, keywords: item.keywords, dhash: h, others, durationSec: item.durationSec, edgeCut: item.edgeCut,
       })
       patch({ autoChecks: res, dhash: h })
+    } catch (e) {
+      // 예전 검사 결과를 그대로 보여주지 않고, 파일을 못 읽었다고 알림
+      console.error(e)
+      patch({ autoChecks: [{ ruleId: 'spec', ok: false, message: `최종 파일을 읽지 못했어요(${(e as Error)?.message || e}). 4단계 “다듬기”에서 다시 처리해 주세요.` }] })
     } finally { setRunning(false) }
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -783,9 +840,10 @@ function ReviewStep({ item, patch, final, others, save, openWork }: {
   const okCount = passed.length + (humanRules.length - unchecked.length)
   const setChecks = (ids: string[], v: boolean) => patch({ manualChecks: { ...item.manualChecks, ...Object.fromEntries(ids.map((id) => [id, v])) } })
 
-  const markReady = async () => { await save({ status: 'ready', readyAt: nowIso() }); toast('✅ 업로드 준비 완료로 저장했어요!') }
+  const markReady = async () => { if (await save({ status: 'ready', readyAt: nowIso() })) toast('✅ 업로드 준비 완료로 저장했어요!') }
   const markUploaded = async () => {
     const it = await save({ status: 'uploaded', uploadedAt: ymd(), readyAt: item.readyAt ?? nowIso() })
+    if (!it) return
     if (it.planId) await db.plans.update(it.planId, { done: true })
     toast('📤 오늘 업로드로 기록했어요. 심사 결과는 보관함에서 바꿔 주세요.')
   }
@@ -794,6 +852,7 @@ function ReviewStep({ item, patch, final, others, save, openWork }: {
     toast('Drive에 올리는 중…', 'info')
     try {
       const it = await save()
+      if (!it) return
       await uploadItemToDrive(it, final)
       const fresh = await db.items.get(it.id)
       patch({ driveFileId: fresh?.driveFileId, driveLink: fresh?.driveLink })
@@ -810,9 +869,14 @@ function ReviewStep({ item, patch, final, others, save, openWork }: {
         <div>
           <div>{r.text}</div>
           {c && <div className="detail">{c.message}</div>}
-          {c?.ok === null && (
-            <label className="inline small"><input type="checkbox" checked={!!item.manualChecks[`ack:${r.id}`]} onChange={(e) => setChecks([`ack:${r.id}`], e.target.checked)} />직접 봤는데 괜찮아요</label>
-          )}
+          <div className="row" style={{ gap: 6, marginTop: 4 }}>
+            {c?.ok === null && (
+              <label className="inline small"><input type="checkbox" checked={!!item.manualChecks[`ack:${r.id}`]} onChange={(e) => setChecks([`ack:${r.id}`], e.target.checked)} />직접 봤는데 괜찮아요</label>
+            )}
+            {c && c.ok !== true && FIX_STEP[r.id] != null && (
+              <button className="small" onClick={() => goStep(item.type === 'video' && r.id === 'spec' ? 2 : FIX_STEP[r.id])}>고치러 가기 →</button>
+            )}
+          </div>
         </div>
       </div>
     )
