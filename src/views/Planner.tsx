@@ -159,35 +159,53 @@ export function Planner({ openWork }: { openWork: Open }) {
         <p className="small muted">아이디어를 날짜로 끌어다 놓으면 작업이 돼요. 작업 칩도 끌어서 날짜를 옮길 수 있어요. 빈 칸을 더블클릭하면 새 작업.</p>
       </div>
 
-      <IdeaBoard ideas={ideas} openWork={openWork} />
+      <IdeaBoard ideas={ideas} plans={plans} openWork={openWork} />
 
       {edit && <PlanModal plan={edit} onClose={() => setEdit(null)} openWork={openWork} />}
     </div>
   )
 }
 
-function IdeaBoard({ ideas, openWork }: { ideas: Idea[]; openWork: Open }) {
+type IdeaTab = 'todo' | 'scheduled' | 'done'
+
+function IdeaBoard({ ideas, plans, openWork }: { ideas: Idea[]; plans: Plan[]; openWork: Open }) {
   const [title, setTitle] = useState('')
   const [types, setTypes] = useState<ElementType[]>(['svg'])
   const [focus, setFocus] = useState('')
-  const [filter, setFilter] = useState<'all' | Idea['source']>('all')
+  const [source, setSource] = useState<'all' | Idea['source']>('all')
+  const [tab, setTab] = useState<IdeaTab>('todo')
+  const [open, setOpen] = useState<string | null>(null)
 
   const add = async (list: Omit<Idea, 'id' | 'createdAt'>[]) => {
     const existing = new Set(ideas.map((i) => i.title))
     await db.ideas.bulkAdd(list.filter((l) => !existing.has(l.title)).map((l) => ({ ...l, id: uid(), createdAt: nowIso() })))
   }
-  const parse = (source: Idea['source']) => async (text: string) => {
+  const parse = (src: Idea['source']) => async (text: string) => {
     const arr = extractJson<{ title: string; types?: ElementType[]; notes?: string; tags?: string[] }[]>(text)
-    await add(arr.map((a) => ({ title: a.title, types: (a.types ?? ['svg']).filter((t) => ['svg', 'png', 'background', 'video'].includes(t)), notes: a.notes, tags: a.tags ?? [], source })))
+    await add(arr.map((a) => ({ title: a.title, types: (a.types ?? ['svg']).filter((t) => ['svg', 'png', 'background', 'video'].includes(t)), notes: a.notes, tags: a.tags ?? [], source: src })))
+    setTab('todo')
   }
-  const shown = ideas.filter((i) => filter === 'all' || i.source === filter).sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned))
+
+  // 캘린더에 들어간 아이디어는 '일정 잡힘', 그 작업을 끝내면 '완료'
+  const plansOf = (id: string) => plans.filter((p) => p.ideaId === id).sort((a, b) => a.start.localeCompare(b.start))
+  const statusOf = (i: Idea): IdeaTab => {
+    const ps = plansOf(i.id)
+    if (!ps.length) return 'todo'
+    return ps.every((p) => p.done) ? 'done' : 'scheduled'
+  }
+  const bySource = ideas.filter((i) => source === 'all' || i.source === source)
+  const counts = { todo: 0, scheduled: 0, done: 0 }
+  bySource.forEach((i) => counts[statusOf(i)]++)
+  const shown = bySource.filter((i) => statusOf(i) === tab).sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned))
+  const schedule = (i: Idea, day: string) => db.plans.add({ id: uid(), kind: 'task', title: i.title, start: day, end: day, types: i.types, notes: i.notes, ideaId: i.id })
+  const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8))}`
 
   return (
     <div className="card col" style={{ gap: 10, alignSelf: 'start', maxHeight: 'calc(100vh - 100px)', overflow: 'auto' }}>
       <h3 style={{ margin: 0 }}>💡 아이디어 보관함</h3>
       <div className="col" style={{ gap: 6 }}>
-        <input placeholder="직접 추가 (예: 붕어빵 SVG)" value={title} onChange={(e) => setTitle(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && title.trim()) { add([{ title: title.trim(), types, source: 'me', tags: [] }]); setTitle('') } }} />
+        <input placeholder="직접 추가 (예: 붕어빵 SVG) + Enter" value={title} onChange={(e) => setTitle(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && title.trim()) { add([{ title: title.trim(), types, source: 'me', tags: [] }]); setTitle(''); setTab('todo') } }} />
         <TypePicker value={types} onChange={setTypes} multi />
       </div>
       <div className="note col" style={{ gap: 8 }}>
@@ -195,34 +213,51 @@ function IdeaBoard({ ideas, openWork }: { ideas: Idea[]; openWork: Open }) {
         <AiRunner label="아이디어 추천" build={() => ideasRequest({ focus: focus || `오늘(${ymd()}) 기준 앞으로 4~10주 사이 시즌·기념일`, count: 12, existing: ideas.map((i) => i.title) })} onResult={parse('ai')} />
         <AiRunner label="트렌드 서치(웹 검색)" build={() => trendRequest({ existing: ideas.map((i) => i.title) })} onResult={parse('trend')} />
       </div>
-      <div className="row">
-        {(['all', 'me', 'ai', 'trend'] as const).map((f) => (
-          <button key={f} className={`small ${filter === f ? 'primary' : ''}`} onClick={() => setFilter(f)}>{{ all: '전체', me: '내 메모', ai: 'AI 추천', trend: '트렌드' }[f]}</button>
+
+      <div className="seg" style={{ alignSelf: 'stretch', display: 'flex' }}>
+        {([['todo', '대기'], ['scheduled', '일정 잡힘'], ['done', '완료']] as const).map(([k, l]) => (
+          <button key={k} className={`small grow ${tab === k ? 'primary' : ''}`} onClick={() => setTab(k)}>{l} {counts[k]}</button>
         ))}
       </div>
-      {shown.length === 0 && <p className="small muted">아이디어가 없어요.</p>}
-      {shown.map((i) => (
-        <div key={i.id} className="idea" draggable onDragStart={(e) => e.dataTransfer.setData('text/idea', i.id)}>
-          <div className="row between">
-            <b>{i.pinned && '📌 '}{i.title}</b>
-            <span className="row" style={{ gap: 2 }}>
-              <label className="small" title="날짜 지정(모바일)" style={{ position: 'relative', cursor: 'pointer' }}>📅
-                <input type="date" aria-label="날짜 지정" style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }}
-                  onChange={(e) => e.target.value && db.plans.add({ id: uid(), kind: 'task', title: i.title, start: e.target.value, end: e.target.value, types: i.types, notes: i.notes, ideaId: i.id })} />
-              </label>
-              <button className="ghost small" title="고정" onClick={() => db.ideas.update(i.id, { pinned: !i.pinned })}>📌</button>
-              <button className="ghost small" title="작업대로" onClick={() => openWork({ topic: i.title, type: i.types[0], notes: i.notes })}>🛠</button>
-              <button className="ghost small danger" title="삭제" onClick={() => db.ideas.delete(i.id)}>✕</button>
-            </span>
+      <div className="row between">
+        <span className="small muted">{tab === 'todo' ? '👉 카드를 캘린더 날짜로 끌어다 놓으세요' : tab === 'scheduled' ? '캘린더에 들어간 아이디어' : '작업을 끝낸 아이디어'}</span>
+        <select className="small" value={source} onChange={(e) => setSource(e.target.value as typeof source)} aria-label="출처">
+          <option value="all">모든 출처</option><option value="me">내 메모</option><option value="ai">AI 추천</option><option value="trend">트렌드</option>
+        </select>
+      </div>
+
+      {shown.length === 0 && <p className="small muted">{tab === 'todo' ? '대기 중인 아이디어가 없어요. 위에서 추가하거나 AI에게 추천받으세요.' : '없어요.'}</p>}
+      {shown.map((i) => {
+        const ps = plansOf(i.id)
+        const expanded = open === i.id
+        return (
+          <div key={i.id} className={`idea ${tab !== 'todo' ? 'placed' : ''}`} draggable={tab === 'todo'} onDragStart={(e) => e.dataTransfer.setData('text/idea', i.id)}>
+            <div className="row between" style={{ alignItems: 'flex-start' }}>
+              <b>{i.pinned && '📌 '}{i.title}</b>
+              {ps.length > 0 && <span className={`badge ${tab === 'done' ? 'ok' : 'accent'}`}>{tab === 'done' ? '✓ 완료' : `📅 ${ps.map((p) => md(p.start)).join(', ')}`}</span>}
+            </div>
+            <div className="row" style={{ gap: 4 }}>
+              {i.types.map((t) => <TypeBadge key={t} type={t} />)}
+              <span className="badge">{{ me: '내 메모', ai: 'AI', trend: '트렌드' }[i.source]}</span>
+              {i.tags.slice(0, 3).map((t) => <span key={t} className="badge">#{t}</span>)}
+            </div>
+            {i.notes && (
+              <p className={`small muted ${expanded ? '' : 'clamp2'}`} onClick={() => setOpen(expanded ? null : i.id)} style={{ cursor: 'pointer' }} title={expanded ? '접기' : '펼치기'}>{i.notes}</p>
+            )}
+            <div className="idea-actions">
+              {tab === 'todo' && (
+                <label className="act" title="날짜를 골라 캘린더에 넣기">📅 날짜 정하기
+                  <input type="date" aria-label="날짜 정하기" onChange={(e) => e.target.value && schedule(i, e.target.value)} />
+                </label>
+              )}
+              <button className="act" title="작업대에서 바로 만들기" onClick={() => openWork({ topic: i.title, type: i.types[0], notes: i.notes, planId: ps.find((p) => !p.done)?.id })}>🛠 만들기</button>
+              {tab === 'todo' && <button className="act" title="목록 맨 위에 고정" onClick={() => db.ideas.update(i.id, { pinned: !i.pinned })}>📌 {i.pinned ? '고정 해제' : '고정'}</button>}
+              {tab === 'scheduled' && <button className="act" title="캘린더에서 빼고 대기로 돌리기" onClick={() => db.plans.bulkDelete(ps.map((p) => p.id))}>↩ 일정 취소</button>}
+              <button className="act danger" title="아이디어 삭제" onClick={() => confirm(`“${i.title}” 아이디어를 삭제할까요?`) && db.ideas.delete(i.id)}>🗑</button>
+            </div>
           </div>
-          <div className="row" style={{ gap: 4 }}>
-            {i.types.map((t) => <TypeBadge key={t} type={t} />)}
-            <span className="badge">{{ me: '내 메모', ai: 'AI', trend: '트렌드' }[i.source]}</span>
-            {i.tags.slice(0, 3).map((t) => <span key={t} className="badge">#{t}</span>)}
-          </div>
-          {i.notes && <p className="small muted">{i.notes}</p>}
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
