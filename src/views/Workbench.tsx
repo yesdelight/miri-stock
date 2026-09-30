@@ -454,7 +454,8 @@ function ElementProcess({ item, patch, source, final, setFinal }: {
   const makePng = async (c: HTMLCanvasElement) => {
     const min = item.smallSize ? spec.minPxSmall! : spec.minPx!
     let out = c
-    if (autoUp && Math.max(c.width, c.height) < min) out = tightCrop(upscaleLongSide(c, min), 0)
+    // 확대 후 다시 자르지 않음 — 다시 자르면 여백이 사라지고 최소 크기보다 작아짐
+    if (autoUp && Math.max(c.width, c.height) < min) out = upscaleLongSide(c, min)
     out = downscaleLongSide(out, spec.maxPx!)
     const b = await encodePng(out, spec.minDpi!)
     setFinal(b)
@@ -538,7 +539,7 @@ function ElementProcess({ item, patch, source, final, setFinal }: {
           <div className="note warn small">⚠️ 그림이 원본 이미지의 {item.edgeCut.join('·')} 끝에 닿아 있어요. 원래 그림이 잘려서 생성된 거라면 “불완전한 형태”로 거부될 수 있어요. 프롬프트에 “small even padding, fully inside the frame”이 들어가 있으니 다시 생성해 보세요.</div>
         )}
         {tooBig && <div className="note bad small">150KB를 넘었어요. 오른쪽 “세부 조정”에서 색상 수나 추적 해상도를 낮추고 다시 변환하세요.</div>}
-        <p className="small muted">체크무늬 = 투명한 부분 · 빨간 점선 = 파일 가장자리(그림과 점선 사이가 거의 붙어 있어야 해요)</p>
+        <p className="small muted">체크무늬 = 투명한 부분 · <b>빨간 점선 네모 = 저장되는 파일의 테두리</b>(그림과 점선 사이가 거의 붙어 있어야 규칙 통과)</p>
       </div>
 
       <div className="card col">

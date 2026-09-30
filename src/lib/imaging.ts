@@ -295,8 +295,12 @@ export function upscaleLongSide(c: Canvas, target: number): Canvas {
   let cur = c
   const long = () => Math.max(cur.width, cur.height)
   while (long() < target) {
-    const f = Math.min(2, target / long())
-    cur = resizeCanvas(cur, cur.width * f, cur.height * f)
+    if (target / long() > 2) { cur = resizeCanvas(cur, cur.width * 2, cur.height * 2); continue }
+    // 마지막 단계: 긴 변을 정확히 target으로(반올림으로 1px 모자라지 않게)
+    const f = target / long()
+    cur = cur.width >= cur.height
+      ? resizeCanvas(cur, target, Math.max(1, Math.round(cur.height * f)))
+      : resizeCanvas(cur, Math.max(1, Math.round(cur.width * f)), target)
   }
   return cur
 }
