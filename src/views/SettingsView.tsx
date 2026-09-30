@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react'
 import { aiText, PROVIDER_LABEL } from '../lib/ai'
 import { exportBackup, importBackup } from '../lib/db'
-import { connectDrive, downloadFile, findFile, uploadFile } from '../lib/drive'
+import { connectDrive, downloadFile, driveConnected, findFile, uploadFile } from '../lib/drive'
+import { lastAutoBackup, runRecovery, scanRecovery, titleFromName } from '../lib/driveRecovery'
 import { DEFAULT_SITES, updateSettings, useSettings, type Provider, type Site } from '../lib/settings'
 import { downloadBlob, ymd } from '../lib/utils'
 
@@ -20,10 +21,25 @@ export function SettingsView() {
     try { setMsg(await fn()) } catch (e) { setMsg(`오류: ${(e as Error).message}`) }
   }
 
+  const lastAuto = lastAutoBackup()
+  const recover = async () => {
+    try {
+      setMsg('Drive를 살펴보는 중…')
+      if (!driveConnected()) await connectDrive()
+      const scan = await scanRecovery()
+      const pre = scan.restoredBackup ? 'Drive 백업 기록을 먼저 불러왔어요.\n\n' : ''
+      if (!scan.refill.length && !scan.orphans.length) { setMsg(`${pre}복구할 게 없어요. 모든 요소의 파일이 제자리에 있어요.`); return }
+      const list = scan.orphans.map((o) => `· ${titleFromName(o.name)}`).join('\n')
+      if (!confirm(`${pre}파일 다시 받기: ${scan.refill.length}개\nDrive에만 있어서 새로 만들 요소: ${scan.orphans.length}개${list ? `\n${list}` : ''}\n\n복구할까요?`)) { setMsg(''); return }
+      const r = await runRecovery(scan, setMsg)
+      setMsg(`🛟 복구 끝! 파일 다시 받음 ${r.refilled}개 · 새로 만든 요소 ${r.created}개${r.failed.length ? ` · 실패 ${r.failed.join(', ')}` : ''}. 새로 만든 요소는 보관함 “제작 중”에서 프롬프트·키워드를 넣고 검수해 주세요.`)
+    } catch (e) { setMsg(`오류: ${(e as Error).message}`) }
+  }
+
   return (
     <div className="col" style={{ gap: 16, maxWidth: 820 }}>
       <h1>설정</h1>
-      {msg && <div className="note info small">{msg}</div>}
+      {msg && <div className="note info small" style={{ position: 'sticky', top: 8, zIndex: 5, whiteSpace: 'pre-line' }}>{msg}</div>}
 
       <div className="card col">
         <h3>화면</h3>
@@ -119,6 +135,16 @@ export function SettingsView() {
             const f = e.target.files?.[0]
             if (f) act(async () => { await importBackup(JSON.parse(await f.text())); return '불러왔어요.' })
           }} />
+        </div>
+        <div className="note small">
+          <b>🛟 앱 저장소가 비었을 때 (웹앱을 다시 만들었거나 브라우저 데이터를 지웠을 때)</b><br />
+          Drive <code>[Miri] Stock</code> 폴더의 파일로 요소를 되살려요. 요소가 하나도 없으면 Drive 백업 기록부터 불러와요.
+          기록은 있는데 파일이 없는 요소는 파일을 다시 받고, Drive에만 있는 파일은 “제작 중” 요소로 만들어요
+          — 이 요소들은 프롬프트·키워드·심사 기록을 다시 넣고 검수를 다시 해야 해요.
+          <div className="row mt">
+            <button className="primary" onClick={recover}>🛟 Drive 파일로 복구</button>
+            <span className="small muted">{lastAuto ? `자동 백업: ${new Date(lastAuto).toLocaleString('ko-KR')}` : 'Drive에 연결돼 있으면 기록이 바뀔 때마다 자동으로 백업해요.'}</span>
+          </div>
         </div>
       </div>
 

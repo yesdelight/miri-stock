@@ -6,6 +6,7 @@ import { StatusBadge, TypeBadge, useObjectUrl } from '../components/ui'
 import { aiImage, blobToBase64, CHAT_URL, PROVIDER_LABEL } from '../lib/ai'
 import { runAutoChecks, videoDuration } from '../lib/checks'
 import { db, getBlob, nowIso, promptKey, putBlob, toMemoryBlob, uid, type CheckResult, type Item, type SavedPrompt } from '../lib/db'
+import { driveConnected } from '../lib/drive'
 import { uploadItemToDrive } from '../lib/driveItems'
 import {
   analyzeAlpha, blobToCanvas, edgeContact, cropToAspect, DEFAULT_BG_OPTIONS, dHash, downscaleLongSide, encodeJpeg, encodePng,
@@ -874,7 +875,20 @@ function ReviewStep({ item, patch, final, others, save, openWork, goStep }: {
   const okCount = passed.length + (humanRules.length - unchecked.length)
   const setChecks = (ids: string[], v: boolean) => patch({ manualChecks: { ...item.manualChecks, ...Object.fromEntries(ids.map((id) => [id, v])) } })
 
-  const markReady = async () => { if (await save({ status: 'ready', readyAt: nowIso() })) toast('✅ 업로드 준비 완료로 저장했어요!') }
+  const markReady = async () => {
+    const it = await save({ status: 'ready', readyAt: nowIso() })
+    if (!it) return
+    toast('✅ 업로드 준비 완료로 저장했어요!')
+    // Drive에 연결돼 있으면 최종 파일도 바로 Drive에 보관(앱 저장소가 사라져도 되살릴 수 있게)
+    if (final && driveConnected()) {
+      try {
+        await uploadItemToDrive(it, final)
+        const fresh = await db.items.get(it.id)
+        patch({ driveFileId: fresh?.driveFileId, driveLink: fresh?.driveLink })
+        toast(`☁️ Drive “${TYPE_FOLDER[item.type]}” 폴더에도 보관했어요.`, 'info')
+      } catch (e) { console.warn('Drive 자동 보관 실패', e) }
+    }
+  }
   const markUploaded = async (siteId: string, name: string) => {
     const it = await save(sitePatch(item, siteId, 'uploaded'))
     if (!it) return
