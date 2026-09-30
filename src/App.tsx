@@ -7,6 +7,7 @@ import { Revenue } from './views/Revenue'
 import { RulesView } from './views/RulesView'
 import { SettingsView } from './views/SettingsView'
 import { Tabs } from './components/ui'
+import { Toasts } from './components/toast'
 
 type View = 'home' | 'work' | 'manage' | 'rules' | 'settings'
 type HomeTab = 'dashboard' | 'calendar'
@@ -24,7 +25,7 @@ export default function App() {
   }
 
   const nav: { id: View; label: string }[] = [
-    { id: 'home', label: '📊 대시보드·캘린더' },
+    { id: 'home', label: '🏠 홈·캘린더' },
     { id: 'work', label: '🛠 작업대' },
     { id: 'manage', label: '🗂 보관함·수익' },
   ]
@@ -33,6 +34,7 @@ export default function App() {
     <div className="app">
       <nav className="nav">
         <div className="brand">Miri Stock<small>디자인허브 요소 작업실</small></div>
+        <button className="newbtn" onClick={() => openWork({})}>＋ 새 요소 만들기</button>
         {nav.map((n) => (
           <button key={n.id} className={view === n.id ? 'active' : ''} onClick={() => setView(n.id)}>{n.label}</button>
         ))}
@@ -67,6 +69,7 @@ export default function App() {
         {view === 'rules' && <RulesView />}
         {view === 'settings' && <SettingsView />}
       </main>
+      <Toasts />
     </div>
   )
 }

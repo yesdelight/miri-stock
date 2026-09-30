@@ -1,4 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
+import { useState } from 'react'
 import { db, STATUS_LABEL, type ItemStatus } from '../lib/db'
 import { TYPE_LABEL, type ElementType } from '../lib/rules'
 import { seasonEvents } from '../lib/seasons'
@@ -12,6 +13,8 @@ const STATUSES = Object.keys(STATUS_LABEL) as ItemStatus[]
 
 export function Dashboard({ openWork, goCalendar }: { openWork: (s: Omit<WorkbenchStart, 'key'>) => void; goCalendar: () => void }) {
   const items = useLiveQuery(() => db.items.toArray(), []) ?? []
+  const ideaCount = useLiveQuery(() => db.ideas.count(), []) ?? 0
+  const [hideGuide, setHideGuide] = useState(() => { try { return localStorage.getItem('miri-hide-guide') === '1' } catch { return false } })
   const plans = useLiveQuery(() => db.plans.toArray(), []) ?? []
   const revenue = useLiveQuery(() => db.revenue.toArray(), []) ?? []
   const { leadDays } = useSettings()
@@ -41,8 +44,31 @@ export function Dashboard({ openWork, goCalendar }: { openWork: (s: Omit<Workben
   const themesNow = plans.filter((p) => p.kind === 'theme' && p.start <= today && p.end >= today)
   const recent = [...items].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 6)
 
+  const guide = [
+    { done: ideaCount > 0 || plans.length > 0, title: '만들 거리 모으기', desc: '캘린더·아이디어에서 AI 추천이나 트렌드 서치로 주제를 모아요', go: goCalendar },
+    { done: items.length > 0, title: '첫 요소 만들기', desc: '작업대에서 6단계를 따라가면 규칙에 맞게 다듬고 검수까지 해줘요', go: () => openWork({}) },
+    { done: uploadedAll.length > 0, title: '올리고 기록하기', desc: '미리캔버스에 올린 뒤 “오늘 업로드했어요”를 누르면 여기 통계에 쌓여요', go: goCalendar },
+  ]
+  const showGuide = !hideGuide && guide.some((g) => !g.done)
+
   return (
     <div className="col" style={{ gap: 16 }}>
+      {showGuide && (
+        <div className="card col">
+          <div className="row between">
+            <h3 style={{ margin: 0 }}>👋 이렇게 시작해요</h3>
+            <button className="small ghost" onClick={() => { setHideGuide(true); try { localStorage.setItem('miri-hide-guide', '1') } catch { /* 무시 */ } }}>숨기기</button>
+          </div>
+          <div className="guide">
+            {guide.map((g, i) => (
+              <button key={g.title} className={`g ${g.done ? 'done' : ''}`} onClick={g.go}>
+                <span className="n">{g.done ? '✓' : i + 1}</span>
+                <span className="col" style={{ gap: 2 }}><b>{g.title}</b><span className="small muted">{g.desc}</span></span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="grid g4">
         <Stat v={items.length} l="만든 요소(전체)" />
         <Stat v={uploadedAll.length} l="올린 요소" sub={`오늘 ${uploadedAll.filter((i) => i.uploadedAt === today).length} · 이번 주 ${uploadedAll.filter((i) => i.uploadedAt! >= weekStart).length} · 이번 달 ${uploadedAll.filter((i) => i.uploadedAt!.startsWith(month)).length}`} />

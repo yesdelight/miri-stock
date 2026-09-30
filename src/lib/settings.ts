@@ -6,6 +6,8 @@ export type AiMode = 'api' | 'manual'
 export interface Settings {
   aiMode: AiMode
   textProvider: Provider
+  /** 수동 모드에서 주로 쓰는 채팅 서비스 */
+  manualChat: Provider
   imageProvider: 'openai' | 'gemini' | 'manual'
   anthropicKey: string
   openaiKey: string
@@ -26,6 +28,7 @@ export interface Settings {
 const DEFAULTS: Settings = {
   aiMode: 'manual',
   textProvider: 'claude',
+  manualChat: 'openai',
   imageProvider: 'manual',
   anthropicKey: '',
   openaiKey: '',
