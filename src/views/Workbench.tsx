@@ -57,6 +57,7 @@ export function Workbench({ start, openWork }: { start: WorkbenchStart; openWork
   const [source, setSource] = useState<Blob | null>(null)
   const [final, setFinal] = useState<Blob | null>(null)
   const [saved, setSaved] = useState(false)
+  const [moving, setMoving] = useState(false)
   const others = useLiveQuery(() => db.items.toArray(), []) ?? []
 
   useEffect(() => {
@@ -78,9 +79,13 @@ export function Workbench({ start, openWork }: { start: WorkbenchStart; openWork
   const save = async (extra: Partial<Item> = {}) => {
     const it = { ...item, ...extra, updatedAt: nowIso() }
     if (final && it.type !== 'video') {
-      const c = it.type === 'svg' ? await svgToCanvas(await final.text(), 600) : downscaleLongSide(await blobToCanvas(final), 600)
-      it.dhash = dHash(c)
-      await putBlob(it.id, 'thumb', await thumbnail(c))
+      try {
+        const c = it.type === 'svg' ? await svgToCanvas(await final.text(), 600) : downscaleLongSide(await blobToCanvas(final), 600)
+        it.dhash = dHash(c)
+        await putBlob(it.id, 'thumb', await thumbnail(c))
+      } catch (e) {
+        console.warn('미리보기 만들기 실패', e) // 저장은 계속
+      }
     } else if (final && it.type === 'video') {
       await db.blobs.delete(`${it.id}:thumb`)
     }
@@ -114,7 +119,16 @@ export function Workbench({ start, openWork }: { start: WorkbenchStart; openWork
     if (step === 1 && item.prompt && !item.promptLog.some((l) => l.prompt === item.prompt)) {
       patch({ promptLog: [...item.promptLog, { at: nowIso(), prompt: item.prompt, tool: 'manual' }] })
     }
-    if (saved || source) await save()
+    setMoving(true)
+    try {
+      if (saved || source) await save()
+    } catch (e) {
+      // 저장이 실패해도 단계는 넘어가고, 이유를 알려줌(작업 내용은 화면에 그대로 있음)
+      console.error(e)
+      toast(`보관함 저장 중 오류: ${(e as Error)?.message || e} — 작업 내용은 화면에 남아 있어요. 이 메시지를 알려 주세요.`, 'bad')
+    } finally {
+      setMoving(false)
+    }
     setStep(n)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -136,7 +150,7 @@ export function Workbench({ start, openWork }: { start: WorkbenchStart; openWork
       <ol className="stepper">
         {STEPS.map((s, i) => (
           <li key={s.name}>
-            <button className={`${i === step ? 'active' : ''} ${done[i] ? 'done' : ''}`} onClick={() => goto(i)}>
+            <button className={`${i === step ? 'active' : ''} ${done[i] ? 'done' : ''}`} disabled={moving} onClick={() => goto(i)}>
               <span className="dot">{done[i] && i !== step ? '✓' : i + 1}</span>
               <span className="lbl">{s.name}</span>
             </button>
@@ -156,11 +170,11 @@ export function Workbench({ start, openWork }: { start: WorkbenchStart; openWork
       {step === 5 && <ReviewStep item={item} patch={patch} final={final} others={others} save={save} openWork={openWork} />}
 
       <div className="bottombar">
-        <button onClick={() => goto(step - 1)} disabled={step === 0}>← 이전</button>
+        <button onClick={() => goto(step - 1)} disabled={step === 0 || moving}>← 이전</button>
         <span className="small muted grow" style={{ textAlign: 'center' }}>{!done[step] && blocker}</span>
         {step < STEPS.length - 1 && (
-          <button className="primary" onClick={() => goto(step + 1)} disabled={!done[step] && step < 4}>
-            다음: {STEPS[step + 1].name} →
+          <button className="primary" onClick={() => goto(step + 1)} disabled={moving || (!done[step] && step < 4)}>
+            {moving ? '저장 중…' : `다음: ${STEPS[step + 1].name} →`}
           </button>
         )}
       </div>
