@@ -52,6 +52,9 @@ export default function App() {
           </button>
         ))}
         <div className="spacer" />
+        <a className="navlink" href="https://designhub.miricanvas.com/ko/login" target="_blank" rel="noreferrer" title="미리캔버스 디자인허브(새 창)">
+          🌐 디자인허브 열기 <span aria-hidden="true">↗</span>
+        </a>
         <button className={view === 'rules' ? 'active' : ''} onClick={() => setView('rules')}>📏 규칙</button>
         <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>⚙️ 설정</button>
         <span className="version" title="앱 버전(배포 시각·커밋)">버전 {__BUILD__}</span>

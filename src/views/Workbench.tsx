@@ -939,8 +939,17 @@ function ReviewStep({ item, patch, final, others, save, openWork, goStep }: {
       </div>
 
       <div className="card col">
-        <h3>👀 눈으로 확인하기</h3>
-        <p className="small muted">AI가 먼저 봐 주고, 마지막 확인은 직접 체크해요. 묶음마다 “모두 확인”으로 한 번에 체크할 수 있어요.</p>
+        <div className="row between">
+          <h3 style={{ margin: 0 }}>👀 눈으로 확인하기 <span className="muted small">({humanRules.length - unchecked.length}/{humanRules.length})</span></h3>
+          {unchecked.length > 0 ? (
+            <button className="small primary" onClick={() => {
+              if (confirm(`아래 ${humanRules.length}개 규칙을 모두 직접 보고 확인했나요?\n(업로드 전 마지막 확인이에요. 위반이 있으면 거부될 수 있어요.)`)) setChecks(humanRules.map((r) => r.id), true)
+            }}>✅ 전체 확인했어요</button>
+          ) : (
+            <button className="small ghost" onClick={() => setChecks(humanRules.map((r) => r.id), false)}>전체 해제</button>
+          )}
+        </div>
+        <p className="small muted">AI가 먼저 봐 주고, 마지막 확인은 직접 해요. 규칙을 다 읽어 봤다면 “전체 확인했어요”로 한 번에, 아니면 묶음별 “모두 확인”이나 하나씩 체크해요.</p>
         {item.type !== 'video' && (
           <AiRunner label="AI에게 이미지 검수 맡기기" needsImage doneText="AI 검수 결과가 나왔어요."
             build={() => ({ ...reviewRequest(item.type), image: reviewImg ?? undefined })}
