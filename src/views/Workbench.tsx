@@ -393,13 +393,16 @@ function SourceStep({ item, source, onSource, onDirectFinal }: {
               </button>
             ) : (
               <>
-                <p className="small muted">① 버튼을 누르면 프롬프트가 복사되고 AI가 열려요 → ② 붙여넣어 그림 생성 → ③ 그림을 다운로드해서 왼쪽에 끌어놓기</p>
+                <p className="small muted">① 버튼을 누르면 프롬프트가 복사되고 AI가 열려요 (이미 열려 있으면 “복사만”) → ② 붙여넣어 그림 생성 → ③ 그림을 다운로드해서 왼쪽에 끌어놓기</p>
                 <button className="primary" onClick={() => sendTo(s.manualChat === 'claude' ? 'openai' : s.manualChat)}>
                   📋 복사하고 {PROVIDER_LABEL[s.manualChat === 'claude' ? 'openai' : s.manualChat]} 열기
                 </button>
-                <button className="small" onClick={() => sendTo(s.manualChat === 'gemini' ? 'openai' : 'gemini')}>
-                  {PROVIDER_LABEL[s.manualChat === 'gemini' ? 'openai' : 'gemini']}로 열기
-                </button>
+                <div className="row">
+                  <button className="small" onClick={() => copyText(fullPrompt).then((ok) => toast(ok ? '복사했어요. 열려 있는 AI 창에 붙여넣으세요.' : '복사가 막혔어요.', ok ? 'info' : 'bad'))}>📋 복사만</button>
+                  <button className="small" onClick={() => sendTo(s.manualChat === 'gemini' ? 'openai' : 'gemini')}>
+                    {PROVIDER_LABEL[s.manualChat === 'gemini' ? 'openai' : 'gemini']}로 열기
+                  </button>
+                </div>
               </>
             )}
             <div className="note small">
