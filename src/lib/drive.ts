@@ -3,7 +3,18 @@
 import { getSettings } from './settings'
 
 const SCOPE = 'https://www.googleapis.com/auth/drive'
-let token: { value: string; exp: number } | null = null
+// 토큰을 브라우저에 보관해 새로고침해도 1시간 안에는 다시 로그인하지 않게
+const TOKEN_KEY = 'miri-drive-token'
+const GRANTED_KEY = 'miri-drive-granted'
+let token: { value: string; exp: number } | null = (() => {
+  try {
+    const t = JSON.parse(localStorage.getItem(TOKEN_KEY) ?? 'null')
+    return t && t.exp > Date.now() ? t : null
+  } catch { return null }
+})()
+const store = (k: string, v: string | null) => {
+  try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v) } catch { /* 저장 불가 환경 */ }
+}
 
 interface TokenClient { requestAccessToken(o?: { prompt?: string }): void }
 declare global {
@@ -48,19 +59,30 @@ export async function connectDrive(): Promise<void> {
       callback: (r) => {
         if (r.error || !r.access_token) return rej(new Error(r.error ?? '로그인 실패'))
         token = { value: r.access_token, exp: Date.now() + (r.expires_in ?? 3600) * 1000 - 60000 }
+        store(TOKEN_KEY, JSON.stringify(token))
+        store(GRANTED_KEY, '1')
         res()
       },
     })
-    client.requestAccessToken({ prompt: token ? '' : 'consent' })
+    // 한 번 허락한 뒤에는 동의 화면 없이 바로 토큰만 받아요
+    let granted = false
+    try { granted = localStorage.getItem(GRANTED_KEY) === '1' } catch { /* 무시 */ }
+    client.requestAccessToken({ prompt: granted ? '' : 'consent' })
   })
 }
 
-async function api(path: string, init: RequestInit = {}) {
+async function api(path: string, init: RequestInit = {}, retry = true): Promise<any> { // eslint-disable-line @typescript-eslint/no-explicit-any
   if (!driveConnected()) await connectDrive()
   const res = await fetch(`https://www.googleapis.com${path}`, {
     ...init,
     headers: { ...(init.headers ?? {}), Authorization: `Bearer ${token!.value}` },
   })
+  if (res.status === 401 && retry) {
+    // 토큰 만료 — 한 번만 다시 받아서 재시도
+    token = null
+    store(TOKEN_KEY, null)
+    return api(path, init, false)
+  }
   if (!res.ok) {
     const j = await res.json().catch(() => ({}))
     throw new Error(j.error?.message ?? `Drive 오류 ${res.status}`)

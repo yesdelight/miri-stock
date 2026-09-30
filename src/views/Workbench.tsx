@@ -6,7 +6,7 @@ import { StatusBadge, TypeBadge, useObjectUrl } from '../components/ui'
 import { aiImage, blobToBase64, CHAT_URL, PROVIDER_LABEL } from '../lib/ai'
 import { runAutoChecks, videoDuration } from '../lib/checks'
 import { db, getBlob, nowIso, promptKey, putBlob, uid, type CheckResult, type Item, type SavedPrompt } from '../lib/db'
-import { uploadFile } from '../lib/drive'
+import { uploadItemToDrive } from '../lib/driveItems'
 import {
   analyzeAlpha, blobToCanvas, cropToAspect, DEFAULT_BG_OPTIONS, dHash, downscaleLongSide, encodeJpeg, encodePng,
   removeBackground, thumbnail, tightCrop, upscaleLongSide, type BgRemoveOptions,
@@ -761,10 +761,11 @@ function ReviewStep({ item, patch, final, others, save, openWork }: {
     if (!final) return
     toast('Drive에 올리는 중…', 'info')
     try {
-      const name = `${safeFileName(item.title)}_${item.id.slice(0, 6)}.${SPECS[item.type].ext}`
-      const r = await uploadFile(final, name, [TYPE_FOLDER[item.type], ymd().slice(0, 7)], item.driveFileId)
-      await save({ driveFileId: r.id, driveLink: r.webViewLink })
-      toast('☁️ Drive에 저장했어요.')
+      const it = await save()
+      await uploadItemToDrive(it, final)
+      const fresh = await db.items.get(it.id)
+      patch({ driveFileId: fresh?.driveFileId, driveLink: fresh?.driveLink })
+      toast(`☁️ Drive “${TYPE_FOLDER[item.type]}” 폴더에 저장했어요.`)
     } catch (e) { toast(`Drive 오류: ${(e as Error).message}`, 'bad') }
   }
 
