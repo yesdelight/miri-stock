@@ -35,7 +35,7 @@ const DEFAULTS: Settings = {
   openaiImageModel: 'gpt-image-1',
   geminiModel: 'gemini-2.5-flash',
   geminiImageModel: 'gemini-2.5-flash-image',
-  googleClientId: '',
+  googleClientId: '783969864925-v0jrdb2onvuokglgus8fq23mk9rpdfn0.apps.googleusercontent.com',
   driveFolderId: '1Pkj1EW5dDaZrJkdB1FZKiEzBjtfNISBV',
   driveFolderName: '[Miri] Stock',
   extraBannedWords: '',
@@ -49,7 +49,11 @@ const listeners = new Set<() => void>()
 function load(): Settings {
   try {
     const raw = localStorage.getItem(KEY)
-    return raw ? { ...DEFAULTS, ...JSON.parse(raw) } : { ...DEFAULTS }
+    const s: Settings = raw ? { ...DEFAULTS, ...JSON.parse(raw) } : { ...DEFAULTS }
+    // 이전에 빈 값으로 저장돼 있어도 기본 클라이언트 ID·폴더를 사용
+    if (!s.googleClientId) s.googleClientId = DEFAULTS.googleClientId
+    if (!s.driveFolderId) s.driveFolderId = DEFAULTS.driveFolderId
+    return s
   } catch {
     return { ...DEFAULTS }
   }
