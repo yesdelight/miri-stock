@@ -6,7 +6,7 @@ import { db, nowIso, uid, type Idea, type Plan } from '../lib/db'
 import { ideasRequest, planRequest, trendRequest } from '../lib/prompts'
 import type { ElementType } from '../lib/rules'
 import { seasonEvents } from '../lib/seasons'
-import { addDays, extractJson, pad, ymd } from '../lib/utils'
+import { addDays, extractJson, pad, parseYmd, ymd } from '../lib/utils'
 import type { WorkbenchStart } from './Workbench'
 
 type Open = (s: Omit<WorkbenchStart, 'key'>) => void
@@ -14,6 +14,9 @@ const DOW = ['월', '화', '수', '목', '금', '토', '일']
 
 export function Planner({ openWork }: { openWork: Open }) {
   const [cursor, setCursor] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() } })
+  // 기본은 '앞으로 6주' — 월말에도 다음 달이 같이 보이게
+  const [mode, setMode] = useState<'ahead' | 'month'>('ahead')
+  const [offset, setOffset] = useState(0)
   const [showSeasons, setShowSeasons] = useState(true)
   const [edit, setEdit] = useState<Partial<Plan> | null>(null)
   const [dropDay, setDropDay] = useState<string | null>(null)
@@ -24,13 +27,29 @@ export function Planner({ openWork }: { openWork: Open }) {
 
   const monthStr = `${cursor.y}-${pad(cursor.m + 1)}`
   const days = useMemo(() => {
-    const first = new Date(cursor.y, cursor.m, 1)
-    const start = addDays(ymd(first), -((first.getDay() + 6) % 7))
+    let start: string
+    if (mode === 'ahead') {
+      const t = parseYmd(today)
+      start = addDays(today, -((t.getDay() + 6) % 7) + offset * 7)
+    } else {
+      const first = new Date(cursor.y, cursor.m, 1)
+      start = addDays(ymd(first), -((first.getDay() + 6) % 7))
+    }
     return Array.from({ length: 42 }, (_, i) => addDays(start, i))
-  }, [cursor])
-  const seasons = useMemo(() => [...seasonEvents(cursor.y - 1), ...seasonEvents(cursor.y)], [cursor.y])
+  }, [cursor, mode, offset, today])
+  const rangeStart = days[0], rangeEnd = days[41]
+  const seasons = useMemo(() => {
+    const y = Number(rangeStart.slice(0, 4))
+    return [...seasonEvents(y - 1), ...seasonEvents(y), ...seasonEvents(y + 1)]
+  }, [rangeStart])
 
-  const move = (n: number) => setCursor(({ y, m }) => { const d = new Date(y, m + n, 1); return { y: d.getFullYear(), m: d.getMonth() } })
+  const move = (n: number) => {
+    if (mode === 'ahead') setOffset((o) => o + n * 4)
+    else setCursor(({ y, m }) => { const d = new Date(y, m + n, 1); return { y: d.getFullYear(), m: d.getMonth() } })
+  }
+  const goToday = () => { setOffset(0); const d = new Date(); setCursor({ y: d.getFullYear(), m: d.getMonth() }) }
+  const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8))}`
+  const title = mode === 'ahead' ? `${md(rangeStart)} ~ ${md(rangeEnd)}` : `${cursor.y}년 ${cursor.m + 1}월`
 
   const onDrop = async (day: string, e: React.DragEvent) => {
     e.preventDefault()
@@ -55,14 +74,18 @@ export function Planner({ openWork }: { openWork: Open }) {
       <div className="col" style={{ gap: 12 }}>
         <div className="row between">
           <div className="row">
-            <button onClick={() => move(-1)} aria-label="이전 달">‹</button>
-            <h2 style={{ minWidth: 120, textAlign: 'center' }}>{cursor.y}년 {cursor.m + 1}월</h2>
-            <button onClick={() => move(1)} aria-label="다음 달">›</button>
-            <button className="small" onClick={() => { const d = new Date(); setCursor({ y: d.getFullYear(), m: d.getMonth() }) }}>오늘</button>
+            <button onClick={() => move(-1)} aria-label="이전">‹</button>
+            <h2 style={{ minWidth: 140, textAlign: 'center' }}>{title}</h2>
+            <button onClick={() => move(1)} aria-label="다음">›</button>
+            <button className="small" onClick={goToday}>오늘</button>
+            <span className="seg">
+              <button className={`small ${mode === 'ahead' ? 'primary' : ''}`} onClick={() => setMode('ahead')}>앞으로 6주</button>
+              <button className={`small ${mode === 'month' ? 'primary' : ''}`} onClick={() => setMode('month')}>월별</button>
+            </span>
           </div>
           <div className="row">
             <label className="inline small"><input type="checkbox" checked={showSeasons} onChange={(e) => setShowSeasons(e.target.checked)} />시즌 표시</label>
-            <button className="small" onClick={() => setEdit({ kind: 'theme', start: `${monthStr}-01`, end: `${monthStr}-07`, types: [] })}>+ 테마</button>
+            <button className="small" onClick={() => setEdit({ kind: 'theme', start: today, end: addDays(today, 6), types: [] })}>+ 테마</button>
             <button className="small" onClick={() => setEdit({ kind: 'task', start: today, end: today, types: ['svg'] })}>+ 작업</button>
           </div>
         </div>
@@ -70,7 +93,7 @@ export function Planner({ openWork }: { openWork: Open }) {
         <div className="card" style={{ padding: 12 }}>
           <div className="row between">
             <div className="col" style={{ gap: 4 }}>
-              <b className="small">이 달의 테마</b>
+              <b className="small">이 기간의 테마·시즌</b>
               <div className="row">
                 {monthThemes.map((t) => <button key={t.id} className="chip theme small" style={{ width: 'auto' }} onClick={() => setEdit(t)}>{t.title} · {t.start.slice(5)}~{t.end.slice(5)}</button>)}
                 {monthSeasons.map((s) => <span key={s.title + s.start} className="chip season" style={{ width: 'auto' }}>{s.title} {s.start.slice(5)}~{s.end.slice(5)}</span>)}
@@ -78,10 +101,11 @@ export function Planner({ openWork }: { openWork: Open }) {
               </div>
             </div>
             <AiRunner
-              label="AI로 이 달 캘린더 짜기"
+              label="AI로 이 기간 캘린더 짜기"
               build={() => planRequest({
-                month: monthStr,
-                seasons: [...seasonEvents(cursor.y), ...seasonEvents(cursor.y + 1)].filter((s) => s.start >= `${monthStr}-01` && s.start <= addDays(`${monthStr}-01`, 110)).map((s) => `${s.title}(${s.start})`),
+                start: rangeStart < today ? today : rangeStart,
+                end: rangeEnd,
+                seasons: seasons.filter((s) => s.start >= rangeStart && s.start <= addDays(rangeEnd, 70)).map((s) => `${s.title}(${s.start})`),
                 existingPlans: monthThemes.map((t) => t.title),
               })}
               onResult={async (text) => {
@@ -95,7 +119,7 @@ export function Planner({ openWork }: { openWork: Open }) {
         <div className="cal">
           {DOW.map((d) => <div key={d} className="dow">{d}</div>)}
           {days.map((day) => {
-            const inMonth = day.startsWith(monthStr)
+            const inMonth = mode === 'ahead' ? day >= today : day.startsWith(monthStr)
             const tasks = plans.filter((p) => p.kind === 'task' && p.start === day)
             const themes = plans.filter((p) => p.kind === 'theme' && (p.start === day || (p.start < day && p.end >= day && new Date(day).getDay() === 1)))
             const seas = showSeasons ? seasons.filter((s) => s.start === day) : []
@@ -110,7 +134,7 @@ export function Planner({ openWork }: { openWork: Open }) {
                 onDrop={(e) => onDrop(day, e)}
                 onDoubleClick={() => setEdit({ kind: 'task', start: day, end: day, types: ['svg'] })}
               >
-                <span className="num">{Number(day.slice(8))}</span>
+                <span className="num">{day.endsWith('-01') || day === days[0] ? md(day) : Number(day.slice(8))}</span>
                 {seas.map((s) => <span key={s.title} className="chip season" title={s.ideas.join(', ')}>🎉 {s.title}</span>)}
                 {themes.map((t) => <button key={t.id} className="chip theme" onClick={() => setEdit(t)}>▸ {t.title}</button>)}
                 {tasks.map((t) => (
@@ -135,14 +159,14 @@ export function Planner({ openWork }: { openWork: Open }) {
         <p className="small muted">아이디어를 날짜로 끌어다 놓으면 작업이 돼요. 작업 칩도 끌어서 날짜를 옮길 수 있어요. 빈 칸을 더블클릭하면 새 작업.</p>
       </div>
 
-      <IdeaBoard ideas={ideas} openWork={openWork} monthStr={monthStr} />
+      <IdeaBoard ideas={ideas} openWork={openWork} />
 
       {edit && <PlanModal plan={edit} onClose={() => setEdit(null)} openWork={openWork} />}
     </div>
   )
 }
 
-function IdeaBoard({ ideas, openWork, monthStr }: { ideas: Idea[]; openWork: Open; monthStr: string }) {
+function IdeaBoard({ ideas, openWork }: { ideas: Idea[]; openWork: Open }) {
   const [title, setTitle] = useState('')
   const [types, setTypes] = useState<ElementType[]>(['svg'])
   const [focus, setFocus] = useState('')
@@ -167,9 +191,9 @@ function IdeaBoard({ ideas, openWork, monthStr }: { ideas: Idea[]; openWork: Ope
         <TypePicker value={types} onChange={setTypes} multi />
       </div>
       <div className="note col" style={{ gap: 8 }}>
-        <input placeholder="AI에게 줄 주제 (예: 12월 연말, 카페 메뉴, 비워두면 이번 달)" value={focus} onChange={(e) => setFocus(e.target.value)} />
-        <AiRunner label="아이디어 추천" build={() => ideasRequest({ focus: focus || `${monthStr} 시즌과 1~2달 뒤 시즌`, count: 12, existing: ideas.map((i) => i.title) })} onResult={parse('ai')} />
-        <AiRunner label="트렌드 서치(웹 검색)" build={() => trendRequest({ month: monthStr, existing: ideas.map((i) => i.title) })} onResult={parse('trend')} />
+        <input placeholder="AI에게 줄 주제 (예: 12월 연말, 카페 메뉴 · 비워두면 다가오는 시즌)" value={focus} onChange={(e) => setFocus(e.target.value)} />
+        <AiRunner label="아이디어 추천" build={() => ideasRequest({ focus: focus || `오늘(${ymd()}) 기준 앞으로 4~10주 사이 시즌·기념일`, count: 12, existing: ideas.map((i) => i.title) })} onResult={parse('ai')} />
+        <AiRunner label="트렌드 서치(웹 검색)" build={() => trendRequest({ existing: ideas.map((i) => i.title) })} onResult={parse('trend')} />
       </div>
       <div className="row">
         {(['all', 'me', 'ai', 'trend'] as const).map((f) => (

@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { aiText, CHAT_URL, PROVIDER_LABEL, type AiRequest } from '../lib/ai'
 import { hasTextApi, updateSettings, useSettings, type Provider } from '../lib/settings'
-import { copyText } from '../lib/utils'
+import { copyText, jsonWasRepaired } from '../lib/utils'
 import { toast } from './toast'
 
 interface Props {
@@ -30,6 +30,7 @@ export function AiRunner({ label, build, onResult, disabled, needsImage, primary
   const finish = async (text: string) => {
     await onResult(text)
     toast(doneText ?? `${label} 완료!`)
+    if (jsonWasRepaired) toast('답변 끝이 잘려 있어서 완성된 부분만 가져왔어요. 더 필요하면 한 번 더 눌러 주세요.', 'info')
   }
 
   const run = async () => {
@@ -47,7 +48,7 @@ export function AiRunner({ label, build, onResult, disabled, needsImage, primary
   }
 
   const fullPrompt = manual
-    ? `${manual.system}\n\n---\n\n${manual.prompt}${manual.webSearch ? '\n\n(웹 검색을 사용해서 최신 정보로 답해줘.)' : ''}`
+    ? `${manual.system}\n\n---\n\n${manual.prompt}${manual.webSearch ? '\n\n(웹 검색을 사용해서 최신 정보로 답해줘.)' : ''}\n\n(답변은 설명 없이 JSON 코드블록 하나로만, 짧게.)`
     : ''
 
   const sendTo = async (p: Provider) => {

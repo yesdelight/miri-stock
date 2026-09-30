@@ -39,9 +39,9 @@ export function Dashboard({ openWork, goCalendar }: { openWork: (s: Omit<Workben
     .slice(0, 6)
 
   const weekTasks = plans
-    .filter((p) => p.kind === 'task' && p.start <= addDays(weekStart, 6) && p.end >= weekStart)
+    .filter((p) => p.kind === 'task' && ((p.start >= weekStart && p.start <= addDays(today, 13)) || (!p.done && p.start < today)))
     .sort((a, b) => a.start.localeCompare(b.start))
-  const themesNow = plans.filter((p) => p.kind === 'theme' && p.start <= today && p.end >= today)
+  const themesNow = plans.filter((p) => p.kind === 'theme' && p.start <= addDays(today, 13) && p.end >= today)
   const recent = [...items].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 6)
 
   const guide = [
@@ -138,9 +138,9 @@ export function Dashboard({ openWork, goCalendar }: { openWork: (s: Omit<Workben
 
       <div className="grid g2">
         <div className="card">
-          <div className="row between"><h3>이번 주 할 일</h3><button className="small" onClick={goCalendar}>캘린더 열기</button></div>
-          {themesNow.length > 0 && <p className="small mb">진행 중 테마: {themesNow.map((t) => t.title).join(', ')}</p>}
-          {weekTasks.length === 0 && <p className="muted small">이번 주 잡힌 작업이 없어요. 캘린더에서 아이디어를 날짜로 끌어다 놓으세요.</p>}
+          <div className="row between"><h3>다가오는 2주 할 일</h3><button className="small" onClick={goCalendar}>캘린더 열기</button></div>
+          {themesNow.length > 0 && <p className="small mb">테마: {themesNow.map((t) => t.title).join(', ')}</p>}
+          {weekTasks.length === 0 && <p className="muted small">2주 안에 잡힌 작업이 없어요. 캘린더에서 아이디어를 날짜로 끌어다 놓으세요.</p>}
           <div className="col">
             {weekTasks.map((p) => (
               <div key={p.id} className="row between">

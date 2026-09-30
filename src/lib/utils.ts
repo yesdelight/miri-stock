@@ -57,16 +57,65 @@ export function jaccard(a: string, b: string) {
   return inter / (A.size + B.size - inter)
 }
 
-/** AI 응답에서 JSON 추출 */
-export function extractJson<T = unknown>(text: string): T {
-  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/)
-  const body = fence ? fence[1] : text
+/** 마지막 extractJson이 잘린 답변을 복구했는지(앞부분만 사용) */
+export let jsonWasRepaired = false
+
+const stripTrailingCommas = (s: string) => s.replace(/,(\s*[}\]])/g, '$1')
+
+/** 중간에 잘린 JSON을 마지막으로 완성된 값까지 자르고 괄호를 닫아 복구 */
+function repairTruncated(s: string): string {
+  const stack: string[] = []
+  let inStr = false, esc = false
+  let cut: { pos: number; stack: string[] } | null = null
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i]
+    if (inStr) {
+      if (esc) esc = false
+      else if (c === '\\') esc = true
+      else if (c === '"') inStr = false
+      continue
+    }
+    if (c === '"') inStr = true
+    else if (c === '{' || c === '[') { stack.push(c); cut = { pos: i + 1, stack: [...stack] } }
+    else if (c === '}' || c === ']') {
+      stack.pop()
+      cut = { pos: i + 1, stack: [...stack] }
+      if (!stack.length) return s.slice(0, i + 1)
+    } else if (c === ',') cut = { pos: i, stack: [...stack] }
+  }
+  if (!cut) return s
+  const closers = cut.stack.reverse().map((b) => (b === '{' ? '}' : ']')).join('')
+  return s.slice(0, cut.pos) + closers
+}
+
+function parseBlock(body: string): unknown {
   const start = body.search(/[[{]/)
-  if (start < 0) throw new Error('응답에서 JSON을 찾지 못했어요.')
-  const open = body[start]
-  const close = open === '[' ? ']' : '}'
-  const end = body.lastIndexOf(close)
-  return JSON.parse(body.slice(start, end + 1)) as T
+  if (start < 0) throw new Error('no json')
+  const from = body.slice(start)
+  const close = from[0] === '[' ? ']' : '}'
+  const whole = from.slice(0, from.lastIndexOf(close) + 1)
+  for (const cand of [whole, stripTrailingCommas(whole)]) {
+    try { return JSON.parse(cand) } catch { /* 다음 시도 */ }
+  }
+  const fixed = stripTrailingCommas(repairTruncated(stripTrailingCommas(from)))
+  let v = JSON.parse(fixed)
+  if (Array.isArray(v)) v = v.filter((x) => !(x && typeof x === 'object' && !Array.isArray(x) && !Object.keys(x).length))
+  jsonWasRepaired = true
+  return v
+}
+
+/** AI 응답에서 JSON 추출. 코드 블록 여러 개·잘린 답변·끝 쉼표도 최대한 살림 */
+export function extractJson<T = unknown>(text: string): T {
+  jsonWasRepaired = false
+  const blocks = [...text.matchAll(/```(?:json|JSON)?\s*([\s\S]*?)(?:```|$)/g)].map((m) => m[1]).filter((b) => /[[{]/.test(b))
+  const sources = blocks.length ? blocks : [text]
+  const parsed: unknown[] = []
+  for (const b of sources) {
+    try { parsed.push(parseBlock(b)) } catch { /* 이 블록은 건너뜀 */ }
+  }
+  if (!parsed.length) throw new Error('답변에서 JSON을 찾지 못했어요')
+  if (parsed.length > 1 && parsed.every(Array.isArray)) return (parsed as unknown[][]).flat() as T
+  return parsed[0] as T
 }
 
 export async function copyText(s: string) {
