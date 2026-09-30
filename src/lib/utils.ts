@@ -104,16 +104,49 @@ function parseBlock(body: string): unknown {
   return v
 }
 
-/** AI 응답에서 JSON 추출. 코드 블록 여러 개·잘린 답변·끝 쉼표도 최대한 살림 */
-export function extractJson<T = unknown>(text: string): T {
+/** ChatGPT·Gemini 웹 검색 답변에 붙는 출처 표시 제거 (따옴표가 섞여 JSON을 깨뜨림) */
+function stripCitations(t: string) {
+  return t
+    .replace(/:?[\w-]*content-?reference[^\s{}"]*\{[^{}]*\}/gi, '') // :chatgpt-content-reference{index="0"}
+    .replace(/:?contentReference\[[^\]]*\](\{[^{}]*\})?/g, '') // :contentReference[oaicite:0]{index=0}
+    .replace(/\[oaicite:\d+\]/g, '')
+    .replace(/[\uE200-\uE2FF][^\uE200-\uE2FF]*?[\uE200-\uE2FF]/g, '') // 보이지 않는 인용 문자 묶음
+    .replace(/【[^】]*】/g, '')
+    .replace(/\[cite(?:_start|_end)?:?[^\]]*\]/gi, '')
+}
+
+/** 마지막 수단: 따옴표가 깨진 JSON에서 "키": "값" / "키": [..] 쌍을 정규식으로 주워 객체 목록을 만듦 */
+function looseObjects(text: string): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = []
+  for (const chunk of text.split(/\}\s*,?\s*\{/)) {
+    const obj: Record<string, unknown> = {}
+    for (const m of chunk.matchAll(/"(\w+)"\s*:\s*(\[[^\]]*\]|"(?:[^"\\\n]|\\.)*"(?=\s*[,}\n])|-?\d+(?:\.\d+)?|true|false)/g)) {
+      const raw = m[2]
+      try { obj[m[1]] = JSON.parse(raw) } catch {
+        obj[m[1]] = raw.startsWith('[') ? [...raw.matchAll(/"([^"]*)"/g)].map((x) => x[1]) : raw.replace(/^"|"$/g, '')
+      }
+    }
+    if (Object.keys(obj).length) out.push(obj)
+  }
+  return out
+}
+
+/** AI 응답에서 JSON 추출. 코드 블록 여러 개·잘린 답변·끝 쉼표·출처 표시도 최대한 살림 */
+export function extractJson<T = unknown>(raw: string): T {
   jsonWasRepaired = false
+  const text = stripCitations(raw)
   const blocks = [...text.matchAll(/```(?:json|JSON)?\s*([\s\S]*?)(?:```|$)/g)].map((m) => m[1]).filter((b) => /[[{]/.test(b))
   const sources = blocks.length ? blocks : [text]
   const parsed: unknown[] = []
   for (const b of sources) {
     try { parsed.push(parseBlock(b)) } catch { /* 이 블록은 건너뜀 */ }
   }
-  if (!parsed.length) throw new Error('답변에서 JSON을 찾지 못했어요')
+  if (!parsed.length) {
+    const loose = looseObjects(text)
+    if (!loose.length) throw new Error('답변에서 JSON을 찾지 못했어요')
+    jsonWasRepaired = true
+    return (text.trimStart().startsWith('{') && loose.length === 1 ? loose[0] : loose) as T
+  }
   if (parsed.length > 1 && parsed.every(Array.isArray)) return (parsed as unknown[][]).flat() as T
   return parsed[0] as T
 }
