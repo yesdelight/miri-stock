@@ -5,6 +5,8 @@ import { Splash, UpdateBanner, useBoot } from './components/Boot'
 import { Toasts } from './components/toast'
 import { Modal } from './components/ui'
 import { db, type ItemStatus } from './lib/db'
+import { driveConnected } from './lib/drive'
+import { autoBackup } from './lib/driveRecovery'
 import { updateSettings, useSettings } from './lib/settings'
 import { Dashboard } from './views/Dashboard'
 import { Library } from './views/Library'
@@ -50,6 +52,15 @@ export default function App() {
     if (s.theme === 'auto') delete el.dataset.theme
     else el.dataset.theme = s.theme
   }, [s.theme])
+
+  // 자동 백업: Drive에 연결돼 있으면 기록이 바뀔 때마다(3분 간격·창을 닫거나 숨길 때) _backup에 저장
+  useEffect(() => {
+    const run = () => { if (driveConnected()) autoBackup().catch((e) => console.warn('자동 백업 실패', e)) }
+    const t = setInterval(run, 3 * 60 * 1000)
+    const onHide = () => document.visibilityState === 'hidden' && run()
+    document.addEventListener('visibilitychange', onHide)
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onHide) }
+  }, [])
 
   // 전역 단축키: N 새 요소, 1~5 메뉴, ? 단축키 보기
   useEffect(() => {

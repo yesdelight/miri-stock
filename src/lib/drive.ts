@@ -148,3 +148,31 @@ export async function downloadFile(id: string): Promise<string> {
   if (!res.ok) throw new Error(`Drive 오류 ${res.status}`)
   return res.text()
 }
+
+export interface DriveEntry { id: string; name: string; mimeType: string; createdTime: string; webViewLink?: string }
+
+/** 폴더 안의 파일·폴더 목록(휴지통 제외) */
+export async function listFolder(parent: string): Promise<DriveEntry[]> {
+  const out: DriveEntry[] = []
+  let pageToken = ''
+  do {
+    const q = encodeURIComponent(`'${parent}' in parents and trashed = false`)
+    const r = await api(`/drive/v3/files?q=${q}&pageSize=200&fields=nextPageToken,files(id,name,mimeType,createdTime,webViewLink)${pageToken ? `&pageToken=${pageToken}` : ''}`)
+    out.push(...(r.files ?? []))
+    pageToken = r.nextPageToken ?? ''
+  } while (pageToken)
+  return out
+}
+
+export const isFolder = (e: DriveEntry) => e.mimeType === 'application/vnd.google-apps.folder'
+
+/** 파일 내용을 Blob으로 */
+export async function downloadBlobFile(id: string, type?: string): Promise<Blob> {
+  if (!driveConnected()) await connectDrive()
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`, {
+    headers: { Authorization: `Bearer ${token!.value}` },
+  })
+  if (!res.ok) throw new Error(`Drive 오류 ${res.status}`)
+  const b = await res.blob()
+  return type && b.type !== type ? new Blob([await b.arrayBuffer()], { type }) : b
+}
