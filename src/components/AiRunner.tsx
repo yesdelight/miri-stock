@@ -1,7 +1,7 @@
 // AI 작업 실행기: API 키가 있으면 바로 호출, 없으면 구독 계정(ChatGPT Plus / Gemini Pro / Claude Pro)에
 // 프롬프트를 복사해 붙여넣고 답변을 다시 붙여넣는 수동 모드.
 import { useState } from 'react'
-import { aiText, CHAT_URL, PROVIDER_LABEL, type AiRequest } from '../lib/ai'
+import { aiText, CHAT_URL, isLimitError, PROVIDER_LABEL, type AiRequest } from '../lib/ai'
 import { hasTextApi, updateSettings, useSettings, type Provider } from '../lib/settings'
 import { copyText, jsonWasRepaired } from '../lib/utils'
 import { toast } from './toast'
@@ -42,6 +42,8 @@ export function AiRunner({ label, build, onResult, disabled, needsImage, primary
       await finish(await aiText(req))
     } catch (e) {
       setErr((e as Error).message)
+      // 크레딧·한도가 끝났으면 같은 요청을 구독 계정 수동 모드로 바로 이어서
+      if (isLimitError(e)) { setManual(req); setPaste(''); setShowBox(false) }
     } finally {
       setBusy(false)
     }

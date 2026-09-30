@@ -556,3 +556,14 @@ kbd { font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 
   .nav-foot .version { display: none; }
 }
 .brand-name { font-weight: 800; letter-spacing: .02em; font-size: 15px; } .brand-name small { display: block; font-weight: 500; letter-spacing: 0; font-size: 11px; color: var(--muted); }
+
+/* 한 번에 여러 개 만들기 */
+.brows { display: flex; flex-direction: column; gap: 6px; }
+.brow { display: flex; align-items: center; gap: 10px; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.brow.err { border-color: var(--bad); }
+.brow .bn { width: 22px; height: 22px; border-radius: 50%; background: var(--surface-2); display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex: none; }
+.brow .bthumb { width: 64px; height: 64px; flex: none; border-radius: 8px; border: 1px dashed var(--line); padding: 0; display: inline-flex; align-items: center; justify-content: center; overflow: hidden;
+  background: repeating-conic-gradient(var(--surface-2) 0% 25%, transparent 0% 50%) 50% / 12px 12px; }
+.brow .bthumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.brow .bprompt { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+@media (max-width: 640px) { .brow { flex-wrap: wrap; } }

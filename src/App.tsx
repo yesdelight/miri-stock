@@ -14,9 +14,10 @@ import { Planner } from './views/Planner'
 import { RulesView } from './views/RulesView'
 import { SettingsView } from './views/SettingsView'
 import { Stats } from './views/Stats'
+import { Batch } from './views/Batch'
 import { Workbench, type WorkbenchStart } from './views/Workbench'
 
-export type View = 'home' | 'calendar' | 'work' | 'library' | 'stats' | 'rules' | 'settings'
+export type View = 'home' | 'calendar' | 'work' | 'batch' | 'library' | 'stats' | 'rules' | 'settings'
 
 const NAV: { id: View; label: string; icon: LucideIcon }[] = [
   { id: 'home', label: '홈', icon: Home },
@@ -92,7 +93,7 @@ export default function App() {
         </div>
         <button className="newbtn" onClick={() => openWork({})} title="새 요소 만들기 (N)"><Plus size={16} />새 요소 만들기</button>
         {NAV.map((n, i) => (
-          <button key={n.id} className={`navbtn ${view === n.id ? 'active' : ''}`} onClick={() => setView(n.id)} title={`${n.label} (${i + 1})`}>
+          <button key={n.id} className={`navbtn ${view === n.id || (n.id === 'work' && view === 'batch') ? 'active' : ''}`} onClick={() => setView(n.id)} title={`${n.label} (${i + 1})`}>
             <n.icon size={17} strokeWidth={2} />
             <span className="grow">{n.label}</span>
             {n.id === 'library' && waiting > 0 && <span className="navcount" title="업로드 대기 중인 요소">{waiting}</span>}
@@ -115,7 +116,8 @@ export default function App() {
       <main className="main">
         {view === 'home' && <Dashboard openWork={openWork} go={setView} goLibrary={goLibrary} />}
         {view === 'calendar' && <Planner openWork={openWork} />}
-        {view === 'work' && <Workbench key={start.key} start={start} openWork={openWork} />}
+        {view === 'work' && <Workbench key={start.key} start={start} openWork={openWork} onBatch={() => setView('batch')} />}
+        {view === 'batch' && <Batch openWork={openWork} />}
         {view === 'library' && <Library key={lib.key} openWork={openWork} initialStatus={lib.status} initialSite={lib.site} />}
         {view === 'stats' && <Stats />}
         {view === 'rules' && <RulesView />}
