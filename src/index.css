@@ -199,8 +199,8 @@ label.inline { flex-direction: row; align-items: center; gap: 8px; color: var(--
 
 .thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
 .thumb { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface); cursor: pointer; display: flex; flex-direction: column; }
-.thumb .img { aspect-ratio: 1; background: var(--checker); display: flex; align-items: center; justify-content: center; }
-.thumb .img img { max-width: 92%; max-height: 92%; }
+.thumb .img { aspect-ratio: 1; background: var(--checker); display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative; }
+.thumb .img img { position: absolute; inset: 6%; width: 88%; height: 88%; object-fit: contain; }
 .thumb .meta { padding: 8px; display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
 
 .bar { height: 8px; border-radius: 99px; background: var(--surface-2); overflow: hidden; display: flex; }

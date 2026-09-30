@@ -116,6 +116,7 @@ export const RULES: Rule[] = [
   { id: 'single-object', group: 'type', types: [...ELEMENTS, 'video'], mode: 'auto', text: '한 파일에 하나의 피사체만 있다(단일 객체로 분리)' },
   { id: 'bg-removed', group: 'type', types: ELEMENTS, mode: 'auto', text: '배경이 완벽하게 제거됐다(흰 테두리·잔여 픽셀 없음)' },
   { id: 'tight-crop', group: 'type', types: ELEMENTS, mode: 'auto', text: '요소 사이즈 크롭 — 사방 여백이 거의 없다' },
+  { id: 'not-cut', group: 'type', types: ELEMENTS, mode: 'auto', text: '피사체가 원본 이미지 밖으로 잘리지 않았다(형태가 온전하다)', detail: '원본 가장자리에 닿은 그림은 잘린 형태일 수 있어 다시 생성하는 게 안전' },
   { id: 'svg-colors', group: 'type', types: ['svg'], mode: 'auto', text: `색상이 ${SVG_MAX_COLORS}개 이하다` },
   { id: 'svg-simple', group: 'type', types: ['svg'], mode: 'manual', text: '복잡하지 않은 형태다(3D·그라데이션은 PNG로)' },
   { id: 'svg-crack', group: 'type', types: ['svg'], mode: 'manual', text: '도형 사이 틈(크랙)이 보이지 않는다', detail: '확대해서 경계선 사이 흰 틈 확인' },

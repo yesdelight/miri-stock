@@ -37,6 +37,8 @@ export interface Item {
   bytes?: number
   durationSec?: number
   dhash?: string
+  /** 배경 제거 후 원본 가장자리에 닿은 변(잘린 피사체 의심). 빈 배열 = 안 닿음 */
+  edgeCut?: string[]
   autoChecks: CheckResult[]
   manualChecks: Record<string, boolean>
   aiReview?: { at: string; text: string; pass: boolean | null }

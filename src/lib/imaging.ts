@@ -259,10 +259,25 @@ export function tightCrop(c: Canvas, margin = 0): Canvas {
     if (y > maxY) maxY = y
   }
   if (maxX < 0) return c
-  minX = Math.max(0, minX - margin); minY = Math.max(0, minY - margin)
-  maxX = Math.min(w - 1, maxX + margin); maxY = Math.min(h - 1, maxY + margin)
-  const out = makeCanvas(maxX - minX + 1, maxY - minY + 1)
-  ctx2d(out).drawImage(c, minX, minY, out.width, out.height, 0, 0, out.width, out.height)
+  // 여백은 원본 밖으로도 투명하게 늘림(피사체가 가장자리에 붙어 있어도 사방 동일)
+  const bw = maxX - minX + 1, bh = maxY - minY + 1
+  const out = makeCanvas(bw + margin * 2, bh + margin * 2)
+  ctx2d(out).drawImage(c, minX, minY, bw, bh, margin, margin, bw, bh)
+  return out
+}
+
+/** 배경 제거 후, 피사체가 원본 이미지 가장자리에 닿아 잘렸을 가능성이 있는 변 */
+export function edgeContact(c: Canvas): ('위' | '오른쪽' | '아래' | '왼쪽')[] {
+  const { width: w, height: h } = c
+  const d = ctx2d(c).getImageData(0, 0, w, h).data
+  const solid = (x: number, y: number) => d[(y * w + x) * 4 + 3] >= 128
+  const count = (n: number, f: (i: number) => boolean) => { let k = 0; for (let i = 0; i < n; i++) if (f(i)) k++; return k }
+  const lim = (n: number) => Math.max(4, n * 0.01)
+  const out: ('위' | '오른쪽' | '아래' | '왼쪽')[] = []
+  if (count(w, (x) => solid(x, 0)) > lim(w)) out.push('위')
+  if (count(h, (y) => solid(w - 1, y)) > lim(h)) out.push('오른쪽')
+  if (count(w, (x) => solid(x, h - 1)) > lim(w)) out.push('아래')
+  if (count(h, (y) => solid(0, y)) > lim(h)) out.push('왼쪽')
   return out
 }
 
