@@ -5,7 +5,7 @@ import { toast } from '../components/toast'
 import { StatusBadge, TypeBadge, useObjectUrl } from '../components/ui'
 import { aiImage, blobToBase64, CHAT_URL, PROVIDER_LABEL } from '../lib/ai'
 import { runAutoChecks, videoDuration } from '../lib/checks'
-import { db, getBlob, nowIso, putBlob, uid, type CheckResult, type Item } from '../lib/db'
+import { db, getBlob, nowIso, promptKey, putBlob, uid, type CheckResult, type Item, type SavedPrompt } from '../lib/db'
 import { uploadFile } from '../lib/drive'
 import {
   analyzeAlpha, blobToCanvas, cropToAspect, DEFAULT_BG_OPTIONS, dHash, downscaleLongSide, encodeJpeg, encodePng,
@@ -231,28 +231,63 @@ function PlanStep({ item, patch }: { item: Item; patch: (p: Partial<Item>) => vo
 
 // ---------- 2. 프롬프트 ----------
 function PromptStep({ item, patch, others }: { item: Item; patch: (p: Partial<Item>) => void; others: Item[] }) {
-  const [variants, setVariants] = useState<{ prompt: string; memo: string }[]>([])
-  const previous = useMemo(() => others.filter((o) => o.id !== item.id && (o.theme === item.theme || o.type === item.type)).flatMap((o) => o.promptLog.map((l) => l.prompt)), [others, item])
+  const topic = (item.theme || item.title).trim()
+  const key = promptKey(item.type, topic)
+  // 이 주제·타입으로 받았던 추천 프롬프트 — 안 쓴 것부터
+  const bank = useLiveQuery(() => db.promptBank.where('key').equals(key).toArray(), [key]) ?? []
+  // 저장 안 하고 버린 작업이 고른 프롬프트는 '안 씀'으로 취급
+  const usedBy = (sp: SavedPrompt) => (sp.usedBy && (sp.usedBy === item.id || others.some((o) => o.id === sp.usedBy)) ? sp.usedBy : undefined)
+  const sorted = [...bank].sort((a, b) => Number(!!usedBy(a)) - Number(!!usedBy(b)) || b.createdAt.localeCompare(a.createdAt))
+  const unused = bank.filter((b) => !usedBy(b)).length
+  const previous = useMemo(
+    () => [...others.filter((o) => o.id !== item.id && (o.theme === item.theme || o.type === item.type)).flatMap((o) => o.promptLog.map((l) => l.prompt)), ...bank.map((b) => b.prompt)],
+    [others, item, bank],
+  )
+  const usedTitle = (id?: string) => (id === item.id ? '이 작업' : others.find((o) => o.id === id)?.title || '다른 요소')
 
-  const use = (prompt: string, tool: string) => {
-    patch({ prompt, promptLog: [...item.promptLog, { at: nowIso(), prompt, tool }] })
-    toast('이 프롬프트로 정했어요.')
+  const saveSuggestions = async (text: string) => {
+    const list = extractJson<{ prompt: string; memo?: string }[]>(text).filter((v) => v?.prompt)
+    const have = new Set(bank.map((b) => b.prompt.trim()))
+    const t = nowIso()
+    await db.promptBank.bulkAdd(list.filter((v) => !have.has(v.prompt.trim())).map((v) => ({ id: uid(), key, topic, type: item.type, prompt: v.prompt.trim(), memo: v.memo, createdAt: t })))
+  }
+
+  const choose = async (sp: SavedPrompt) => {
+    const u = usedBy(sp)
+    if (u && u !== item.id && !confirm(`이 프롬프트는 “${usedTitle(u)}”에 이미 썼어요. 같은 프롬프트로 또 만들면 거부될 수 있어요. 그래도 쓸까요?`)) return
+    // 이 작업이 전에 고른 프롬프트는 다시 '안 씀'으로
+    await Promise.all(bank.filter((b) => b.usedBy === item.id && b.id !== sp.id).map((b) => db.promptBank.update(b.id, { usedBy: undefined })))
+    await db.promptBank.update(sp.id, { usedBy: item.id })
+    patch({ prompt: sp.prompt, promptLog: [...item.promptLog, { at: nowIso(), prompt: sp.prompt, tool: 'ai-suggested' }] })
+    toast('이 프롬프트로 정했어요. 나머지는 보관돼서 다음에 쓸 수 있어요.')
   }
 
   return (
     <div className="grid wb" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)' }}>
       <div className="card col">
-        <h3>① AI에게 프롬프트 추천받기</h3>
-        <p className="small muted">규칙(흰 배경, 피사체 하나, 글자 없음 등)이 자동으로 들어가고, 전에 쓴 프롬프트와 겹치지 않게 4가지를 뽑아요.</p>
-        <AiRunner primary label="프롬프트 4개 추천받기" doneText="프롬프트를 받았어요. 마음에 드는 걸 고르세요."
-          build={() => imagePromptsRequest({ topic: item.title, type: item.type, count: 4, previous, style: item.notes })}
-          onResult={(t) => setVariants(extractJson(t))} />
-        {variants.map((v, i) => (
-          <button key={i} className={`variant ${item.prompt === v.prompt ? 'on' : ''}`} onClick={() => use(v.prompt, 'ai-suggested')}>
-            <b className="small">{item.prompt === v.prompt ? '✓ 선택됨 · ' : ''}{v.memo}</b>
-            <span className="small mono">{v.prompt}</span>
-          </button>
-        ))}
+        <h3>① 프롬프트 고르기</h3>
+        <p className="small muted">
+          “{topic || '주제'}” {TYPE_LABEL[item.type]}로 받은 추천이 여기 계속 보관돼요.
+          {bank.length > 0 ? ` 안 쓴 프롬프트 ${unused}개 남음.` : ' 규칙이 자동으로 들어가고, 전에 쓴 것과 겹치지 않게 뽑아요.'}
+        </p>
+        <AiRunner primary={unused === 0} label={bank.length ? '4개 더 추천받기' : '프롬프트 4개 추천받기'} doneText="추천 프롬프트를 보관했어요. 마음에 드는 걸 고르세요."
+          build={() => imagePromptsRequest({ topic, type: item.type, count: 4, previous, style: item.notes })}
+          onResult={saveSuggestions} />
+        {sorted.map((sp) => {
+          const mine = item.prompt === sp.prompt
+          const u = usedBy(sp)
+          return (
+            <div key={sp.id} className={`variant ${mine ? 'on' : ''} ${u && !mine ? 'used' : ''}`}>
+              <button className="variant-body" onClick={() => choose(sp)}>
+                <b className="small">
+                  {mine ? '✓ 선택됨 · ' : u ? `사용함(${usedTitle(u)}) · ` : ''}{sp.memo || '추천 프롬프트'}
+                </b>
+                <span className="small mono">{sp.prompt}</span>
+              </button>
+              {!u && <button className="small ghost danger" title="이 추천 지우기" onClick={() => db.promptBank.delete(sp.id)}>🗑</button>}
+            </div>
+          )
+        })}
       </div>
       <div className="card col">
         <h3>② 사용할 프롬프트</h3>

@@ -311,3 +311,7 @@ label.big input { font-size: 16px; padding: 10px 12px; font-weight: 400; }
 .idea-actions .act:hover { background: var(--surface-2); color: var(--text); }
 .idea-actions .act.danger:hover { color: var(--bad); }
 .idea-actions label.act input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+.variant { flex-direction: row !important; align-items: flex-start; gap: 4px; }
+.variant .variant-body { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; white-space: normal; border: none; background: none; padding: 0; flex: 1; cursor: pointer; }
+.variant.used { opacity: 0.55; }
+.variant { border-radius: 10px; border: 1px solid transparent; }
