@@ -14,7 +14,8 @@ import {
 import { imagePromptsRequest, metadataRequest, reviewRequest } from '../lib/prompts'
 import { ASPECTS, GROUP_LABEL, PROMPT_RULES, rulesFor, SPECS, TYPE_FOLDER, TYPE_LABEL, type AspectId, type ElementType, type Rule } from '../lib/rules'
 import { updateSettings, useSettings, type Provider } from '../lib/settings'
-import { copyText, downloadBlob, extractJson, fmtBytes, MB, safeFileName, ymd } from '../lib/utils'
+import { allRecords, sitePatch } from '../lib/sites'
+import { copyText, downloadBlob, extractJson, fmtBytes, MB, safeFileName } from '../lib/utils'
 import { DEFAULT_TRACE, svgToCanvas, traceToSvg, type TraceOptions } from '../lib/vectorize'
 
 export interface WorkbenchStart {
@@ -809,6 +810,7 @@ function ReviewStep({ item, patch, final, others, save, openWork, goStep }: {
   item: Item; patch: (p: Partial<Item>) => void; final: Blob | null; others: Item[]; save: (p?: Partial<Item>) => Promise<Item | null>
   openWork: (s: Omit<WorkbenchStart, 'key'>) => void; goStep: (n: number) => void
 }) {
+  const { sites } = useSettings()
   const [running, setRunning] = useState(false)
   const [dhash, setDhash] = useState(item.dhash)
   const [reviewImg, setReviewImg] = useState<{ mime: string; base64: string } | null>(null)
@@ -819,8 +821,8 @@ function ReviewStep({ item, patch, final, others, save, openWork, goStep }: {
   // 지금까지 거부된 이유 TOP 3 — 같은 실수 방지
   const topReasons = useMemo(() => {
     const m = new Map<string, number>()
-    for (const o of others) {
-      const r = o.status === 'rejected' ? o.rejectReason?.trim() : ''
+    for (const { rec } of allRecords(others)) {
+      const r = rec.status === 'rejected' ? rec.rejectReason?.trim() : ''
       if (r) m.set(r, (m.get(r) ?? 0) + 1)
     }
     return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3)
@@ -873,11 +875,11 @@ function ReviewStep({ item, patch, final, others, save, openWork, goStep }: {
   const setChecks = (ids: string[], v: boolean) => patch({ manualChecks: { ...item.manualChecks, ...Object.fromEntries(ids.map((id) => [id, v])) } })
 
   const markReady = async () => { if (await save({ status: 'ready', readyAt: nowIso() })) toast('✅ 업로드 준비 완료로 저장했어요!') }
-  const markUploaded = async () => {
-    const it = await save({ status: 'uploaded', uploadedAt: ymd(), readyAt: item.readyAt ?? nowIso() })
+  const markUploaded = async (siteId: string, name: string) => {
+    const it = await save(sitePatch(item, siteId, 'uploaded'))
     if (!it) return
     if (it.planId) await db.plans.update(it.planId, { done: true })
-    toast('📤 오늘 업로드로 기록했어요. 심사 결과는 보관함에서 바꿔 주세요.')
+    toast(`📤 ${name}에 오늘 올렸다고 기록했어요. 심사 결과는 보관함에서 바꿔 주세요.`)
   }
   const toDrive = async () => {
     if (!final) return
@@ -945,7 +947,16 @@ function ReviewStep({ item, patch, final, others, save, openWork, goStep }: {
           {gateOk && <div className="note ok small">업로드할 때 <b>“생성형 AI로 만든 콘텐츠” 체크</b>를 꼭 하세요.</div>}
           <div className="row">
             <button className="primary" disabled={!gateOk} onClick={markReady}>✅ 업로드 준비 완료</button>
-            <button disabled={!gateOk} onClick={markUploaded}>📤 오늘 업로드했어요</button>
+          </div>
+          <div className="row" style={{ gap: 4 }}>
+            <span className="small muted">📤 오늘 올린 곳</span>
+            {sites.map((x) => {
+              const done = !!item.sites?.[x.id]
+              return (
+                <button key={x.id} className="small" disabled={!gateOk || done} title={done ? `${x.name}에 이미 기록됨` : `${x.name}에 오늘 올렸다고 기록`}
+                  onClick={() => markUploaded(x.id, x.short)}>{done ? '✓ ' : ''}{x.short}</button>
+              )
+            })}
           </div>
           <div className="row">
             <button className="small" disabled={!final} onClick={() => final && downloadBlob(final, `${safeFileName(item.title)}.${SPECS[item.type].ext}`)}>⬇ 다운로드</button>

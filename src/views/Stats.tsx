@@ -4,7 +4,9 @@ import { BarChart3, Clock, Hourglass, TrendingUp } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from '../components/toast'
 import { Tabs, TypeBadge } from '../components/ui'
-import { db, nowIso, STATUS_LABEL, type Item, type ItemStatus } from '../lib/db'
+import { db, STATUS_LABEL, type Item, type ItemStatus, type SiteStatus } from '../lib/db'
+import { useSettings } from '../lib/settings'
+import { allRecords, SITE_STATUS_LABEL, siteOf, sitePatch } from '../lib/sites'
 import { TYPE_LABEL, type ElementType } from '../lib/rules'
 import { addDays, daysBetween, fmtWon, ymd } from '../lib/utils'
 import { Revenue } from './Revenue'
@@ -26,12 +28,15 @@ export function Stats() {
 function StatsBody() {
   const items = useLiveQuery(() => db.items.toArray(), []) ?? []
   const revenue = useLiveQuery(() => db.revenue.toArray(), []) ?? []
+  const { sites } = useSettings()
+  const recs = allRecords(items)
   const today = ymd()
   const month = today.slice(0, 7)
   const uploaded = items.filter((i) => i.uploadedAt)
   const approved = items.filter((i) => i.status === 'approved')
-  const rejected = items.filter((i) => i.status === 'rejected')
-  const decided = approved.length + rejected.length
+  const okRecs = recs.filter((r) => r.rec.status === 'approved')
+  const noRecs = recs.filter((r) => r.rec.status === 'rejected')
+  const decided = okRecs.length + noRecs.length
   const totalRev = revenue.reduce((s, r) => s + r.amount, 0)
 
   if (!items.length) {
@@ -49,9 +54,10 @@ function StatsBody() {
   const maxDay = Math.max(1, ...perDay.map((p) => p.n))
   const maxStatus = Math.max(1, ...STATUSES.map((s) => items.filter((i) => i.status === s).length))
 
-  const waiting = items.filter((i) => i.status === 'uploaded')
-    .map((i) => ({ i, days: daysBetween(i.uploadedAt ?? i.updatedAt.slice(0, 10), today) }))
+  const waiting = recs.filter((r) => r.rec.status === 'uploaded')
+    .map((r) => ({ ...r, days: daysBetween(r.rec.uploadedAt, today) }))
     .sort((a, b) => b.days - a.days)
+  const siteIds = [...new Set([...sites.map((x) => x.id), ...recs.map((r) => r.site)])]
 
   const byTheme = new Map<string, Item[]>()
   for (const i of items) {
@@ -63,11 +69,12 @@ function StatsBody() {
     .sort((a, b) => b.ok - a.ok || b.up - a.up || b.made - a.made)
     .slice(0, 8)
 
-  const reasons = rejected.reduce<Record<string, number>>((acc, i) => { const k = i.rejectReason?.trim() || '(사유 미기록)'; acc[k] = (acc[k] ?? 0) + 1; return acc }, {})
+  const reasons = noRecs.reduce<Record<string, number>>((acc, r) => { const k = r.rec.rejectReason?.trim() || '(사유 미기록)'; acc[k] = (acc[k] ?? 0) + 1; return acc }, {})
 
-  const setStatus = async (it: Item, to: ItemStatus) => {
-    await db.items.update(it.id, { status: to, updatedAt: nowIso(), ...(to === 'approved' ? { approvedAt: ymd() } : {}) })
-    toast(`“${it.title}” → ${STATUS_LABEL[to]}`)
+  const setResult = async (it: Item, site: string, to: SiteStatus) => {
+    const reason = to === 'rejected' ? prompt('거부 사유를 적어 두면 다음에 같은 실수를 피할 수 있어요 (선택)') ?? undefined : undefined
+    await db.items.update(it.id, sitePatch(it, site, to, { reason }))
+    toast(`“${it.title}” ${siteOf(sites, site).short} → ${SITE_STATUS_LABEL[to]}`)
   }
 
   return (
@@ -75,7 +82,7 @@ function StatsBody() {
       <div className="grid g4">
         <Kpi icon={<TrendingUp size={16} />} l="만든 요소" v={items.length} sub={`이번 달 ${items.filter((i) => i.createdAt.startsWith(month)).length}개`} />
         <Kpi icon={<Clock size={16} />} l="올린 요소" v={uploaded.length} sub={`이번 달 ${uploaded.filter((i) => i.uploadedAt!.startsWith(month)).length}개`} />
-        <Kpi icon={<BarChart3 size={16} />} l="승인률" v={pct(approved.length, decided)} sub={`판매 중 ${approved.length} · 거부 ${rejected.length}`} />
+        <Kpi icon={<BarChart3 size={16} />} l="승인률 (사이트 합계)" v={pct(okRecs.length, decided)} sub={`판매 중 ${okRecs.length} · 거부 ${noRecs.length}`} />
         <Kpi icon={<TrendingUp size={16} />} l="누적 수익" v={fmtWon(totalRev)} sub={approved.length ? `판매 요소당 ${fmtWon(totalRev / approved.length)}` : '판매 중 요소 없음'} />
       </div>
 
@@ -112,22 +119,45 @@ function StatsBody() {
         <div className="row between"><h3 style={{ margin: 0 }}><Hourglass size={16} style={{ verticalAlign: -2 }} /> 심사 기다리는 중 ({waiting.length})</h3><span className="small muted">결과가 나오면 바로 여기서 바꿔요</span></div>
         {waiting.length === 0 ? <p className="small muted mt">심사 중인 요소가 없어요.</p> : (
           <table className="mt">
-            <thead><tr><th>요소</th><th>올린 날</th><th>기다린 날</th><th style={{ textAlign: 'right' }}>결과</th></tr></thead>
+            <thead><tr><th>요소</th><th>사이트</th><th>올린 날</th><th>기다린 날</th><th style={{ textAlign: 'right' }}>결과</th></tr></thead>
             <tbody>
-              {waiting.map(({ i, days }) => (
-                <tr key={i.id}>
+              {waiting.map(({ i, site, rec, days }) => (
+                <tr key={i.id + site}>
                   <td><TypeBadge type={i.type} /> {i.title}</td>
-                  <td className="small">{i.uploadedAt}</td>
+                  <td><span className="site-tag">{siteOf(sites, site).short}</span></td>
+                  <td className="small">{rec.uploadedAt}</td>
                   <td><span className={`badge ${days >= 14 ? 'bad' : days >= 7 ? 'warn' : ''}`}>{days}일째</span></td>
                   <td style={{ textAlign: 'right' }}>
-                    <button className="small" onClick={() => setStatus(i, 'approved')}><i className="dot st-approved" />판매 중</button>{' '}
-                    <button className="small" onClick={() => setStatus(i, 'rejected')}><i className="dot st-rejected" />거부됨</button>
+                    <button className="small" onClick={() => setResult(i, site, 'approved')}><i className="dot st-approved" />판매 중</button>{' '}
+                    <button className="small" onClick={() => setResult(i, site, 'rejected')}><i className="dot st-rejected" />거부됨</button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
+      </div>
+
+      <div className="card">
+        <h3>사이트별 성과</h3>
+        <table>
+          <thead><tr><th>사이트</th><th>올림</th><th>심사 중</th><th>판매 중</th><th>거부</th><th>승인률</th><th>아직 안 올림</th><th>수익</th></tr></thead>
+          <tbody>
+            {siteIds.map((id) => {
+              const sr = recs.filter((r) => r.site === id)
+              const n = (st: SiteStatus) => sr.filter((r) => r.rec.status === st).length
+              const notYet = items.filter((i) => i.status !== 'making' && !i.sites?.[id]).length
+              const rv = revenue.filter((r) => r.site === id).reduce((a, r) => a + r.amount, 0)
+              return (
+                <tr key={id}>
+                  <td><b>{siteOf(sites, id).short}</b></td><td>{sr.length}</td><td>{n('uploaded')}</td><td>{n('approved')}</td><td>{n('rejected')}</td>
+                  <td>{pct(n('approved'), n('approved') + n('rejected'))}</td><td className="muted">{notYet}</td><td className="small">{rv ? fmtWon(rv) : '-'}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+        <p className="small muted mt">한 요소를 여러 사이트에 올리면 사이트마다 따로 세요. 수익은 “수익 기록”에서 사이트를 고른 것만 합쳐요.</p>
       </div>
 
       <div className="grid g2">
@@ -138,8 +168,9 @@ function StatsBody() {
             <tbody>
               {TYPES.map((t) => {
                 const ti = items.filter((i) => i.type === t)
-                const ok = ti.filter((i) => i.status === 'approved').length
-                const no = ti.filter((i) => i.status === 'rejected').length
+                const tr = recs.filter((r) => r.i.type === t)
+                const ok = tr.filter((r) => r.rec.status === 'approved').length
+                const no = tr.filter((r) => r.rec.status === 'rejected').length
                 const rv = revenue.filter((r) => r.type === t).reduce((s, r) => s + r.amount, 0)
                 return (
                   <tr key={t}>
@@ -167,7 +198,7 @@ function StatsBody() {
 
       <div className="card">
         <h3>거부 사유 모아보기</h3>
-        {rejected.length === 0 ? <p className="small muted">거부된 요소가 없어요. 👏</p> : (
+        {noRecs.length === 0 ? <p className="small muted">거부된 요소가 없어요. 👏</p> : (
           <div className="col" style={{ gap: 6 }}>
             {Object.entries(reasons).sort((a, b) => b[1] - a[1]).map(([k, n]) => (
               <div key={k} className="flow-row">

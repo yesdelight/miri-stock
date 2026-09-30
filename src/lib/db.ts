@@ -11,6 +11,16 @@ export const STATUS_LABEL: Record<ItemStatus, string> = {
   rejected: '거부됨',
 }
 
+/** 사이트별 심사 상태 (디자인허브·툴디·Adobe Stock 등) */
+export type SiteStatus = 'uploaded' | 'approved' | 'rejected'
+
+export interface SiteRecord {
+  status: SiteStatus
+  uploadedAt: string // YYYY-MM-DD
+  approvedAt?: string
+  rejectReason?: string
+}
+
 export interface CheckResult {
   ruleId: string
   ok: boolean | null // null = 판단 불가/경고
@@ -21,7 +31,10 @@ export interface Item {
   id: string
   title: string
   type: ElementType
+  /** 전체 상태 — 제작 중/업로드 대기는 직접, 그 뒤는 사이트별 기록(sites)에서 계산(summarizeSites) */
   status: ItemStatus
+  /** 사이트 id → 심사 기록. 올린 사이트만 들어 있음 */
+  sites?: Record<string, SiteRecord>
   theme?: string
   planId?: string
   prompt?: string
@@ -44,6 +57,7 @@ export interface Item {
   autoChecks: CheckResult[]
   manualChecks: Record<string, boolean>
   aiReview?: { at: string; text: string; pass: boolean | null }
+  /** 예전 형식(사이트 구분 전). 지금은 sites[id].rejectReason 사용 */
   rejectReason?: string
   notes?: string
   driveFileId?: string
@@ -115,6 +129,29 @@ export interface Revenue {
   itemId?: string
   /** 어느 타입에서 난 수익인지(선택) — 통계의 타입별 수익 */
   type?: ElementType
+  /** 어느 사이트 정산인지(선택) */
+  site?: string
+}
+
+/** 사이트별 기록으로 전체 상태·대표 날짜 계산. 한 곳이라도 판매 중이면 판매 중 > 심사 중 > 거부됨(모두 거부) */
+export function summarizeSites(status: ItemStatus, sites: Record<string, SiteRecord> = {}): Pick<Item, 'status' | 'uploadedAt' | 'approvedAt'> {
+  if (status === 'making') return { status }
+  const recs = Object.values(sites)
+  const first = (xs: (string | undefined)[]) => xs.filter(Boolean).sort()[0]
+  const uploadedAt = first(recs.map((r) => r.uploadedAt))
+  const approvedAt = first(recs.map((r) => r.approvedAt))
+  if (!recs.length) return { status: 'ready', uploadedAt: undefined, approvedAt: undefined }
+  const has = (st: SiteStatus) => recs.some((r) => r.status === st)
+  return { status: has('approved') ? 'approved' : has('uploaded') ? 'uploaded' : 'rejected', uploadedAt, approvedAt }
+}
+
+/** 사이트 구분 전 데이터 → 디자인허브 기록으로 옮김 (지우는 것 없음) */
+export function withLegacySites(it: Item): Item {
+  if (it.sites || !['uploaded', 'approved', 'rejected'].includes(it.status)) return it
+  const rec: SiteRecord = { status: it.status as SiteStatus, uploadedAt: it.uploadedAt ?? it.updatedAt.slice(0, 10) }
+  if (it.approvedAt) rec.approvedAt = it.approvedAt
+  if (it.rejectReason) rec.rejectReason = it.rejectReason
+  return { ...it, sites: { designhub: rec } }
 }
 
 export const db = new Dexie('miri-stock') as Dexie & {
@@ -136,6 +173,13 @@ db.version(1).stores({
 // v2: 프롬프트 보관함 추가 (기존 데이터는 그대로)
 db.version(2).stores({
   promptBank: 'id, key, usedBy, createdAt',
+})
+// v3: 사이트별 심사 기록 — 예전 심사 상태는 디자인허브 기록으로 옮김
+db.version(3).stores({}).upgrade(async (tx) => {
+  await tx.table('items').toCollection().modify((it: Item) => {
+    const n = withLegacySites(it)
+    if (n !== it) it.sites = n.sites
+  })
 })
 
 export const uid = () => crypto.randomUUID()
@@ -242,7 +286,7 @@ export async function exportBackup() {
 
 export async function importBackup(data: Awaited<ReturnType<typeof exportBackup>>) {
   await db.transaction('rw', [db.items, db.ideas, db.plans, db.revenue, db.promptBank], async () => {
-    await db.items.bulkPut(data.items ?? [])
+    await db.items.bulkPut((data.items ?? []).map(withLegacySites))
     await db.ideas.bulkPut(data.ideas ?? [])
     await db.plans.bulkPut(data.plans ?? [])
     await db.revenue.bulkPut(data.revenue ?? [])
