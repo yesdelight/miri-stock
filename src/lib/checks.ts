@@ -19,6 +19,7 @@ export interface CheckInput {
   dhash?: string
   others: Item[]
   durationSec?: number
+  edgeCut?: string[]
 }
 
 const r = (ruleId: string, ok: boolean | null, message: string): CheckResult => ({ ruleId, ok, message })
@@ -166,6 +167,11 @@ export async function runAutoChecks(inp: CheckInput): Promise<CheckResult[]> {
     const ok = maxM <= Math.max(2, long * CROP_MARGIN_MAX_RATIO)
     out.push(r('tight-crop', ok, `여백 상${m.top} 우${m.right} 하${m.bottom} 좌${m.left}px${ok ? '' : ' — “여백 없이 크롭”을 누르세요'}`))
   }
+  out.push(inp.edgeCut == null
+    ? r('not-cut', null, '잘림 검사 기록이 없어요. 4단계에서 “다시 처리”를 누르거나, 그림이 온전한지 직접 확인하세요.')
+    : inp.edgeCut.length
+      ? r('not-cut', null, `원본 이미지의 ${inp.edgeCut.join('·')} 가장자리에 그림이 닿아 있어요. 잘린 형태면 거부돼요 — 여백 있게 다시 생성하는 게 안전해요. 온전하면 확인 체크.`)
+      : r('not-cut', true, '원본 가장자리에 닿지 않음 — 잘린 곳 없음'))
   out.push(a.objects > 1
     ? r('single-object', null, `분리된 덩어리가 ${a.objects}개 보여요. 서로 다른 피사체면 “가장 큰 덩어리만 남기기”로 분리하세요. 한 피사체의 떨어진 부속(예: 고양이 머리 위 하트)이면 확인 체크.`)
     : r('single-object', true, '덩어리 1개'))

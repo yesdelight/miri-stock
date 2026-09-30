@@ -8,7 +8,7 @@ import { runAutoChecks, videoDuration } from '../lib/checks'
 import { db, getBlob, nowIso, promptKey, putBlob, uid, type CheckResult, type Item, type SavedPrompt } from '../lib/db'
 import { uploadItemToDrive } from '../lib/driveItems'
 import {
-  analyzeAlpha, blobToCanvas, cropToAspect, DEFAULT_BG_OPTIONS, dHash, downscaleLongSide, encodeJpeg, encodePng,
+  analyzeAlpha, blobToCanvas, edgeContact, cropToAspect, DEFAULT_BG_OPTIONS, dHash, downscaleLongSide, encodeJpeg, encodePng,
   removeBackground, thumbnail, tightCrop, upscaleLongSide, type BgRemoveOptions,
 } from '../lib/imaging'
 import { imagePromptsRequest, metadataRequest, reviewRequest } from '../lib/prompts'
@@ -437,7 +437,8 @@ function ElementProcess({ item, patch, source, final, setFinal }: {
 }) {
   const [opt, setOpt] = useState<BgRemoveOptions>(DEFAULT_BG_OPTIONS)
   const [skipBg, setSkipBg] = useState<boolean | null>(null)
-  const [margin, setMargin] = useState(0)
+  // 여백: 피사체 긴 변 대비 % (규칙: 거의 없게 → 최대 1%)
+  const [marginPct, setMarginPct] = useState(0)
   const [autoUp, setAutoUp] = useState(true)
   const [trace, setTrace] = useState<TraceOptions>(DEFAULT_TRACE)
   const [palette, setPalette] = useState<string[]>([])
@@ -475,7 +476,9 @@ function ElementProcess({ item, patch, source, final, setFinal }: {
     try {
       let c = await blobToCanvas(source)
       if (!skip) c = removeBackground(c, opt)
-      c = tightCrop(c, margin)
+      patch({ edgeCut: edgeContact(c) })
+      c = tightCrop(c, 0)
+      if (marginPct > 0) c = tightCrop(c, Math.round((Math.max(c.width, c.height) * marginPct) / 100))
       setCut(c)
       const a = analyzeAlpha(c)
       setInfo({ objects: a.objects, specks: a.specks, white: Math.round(a.whiteEdgeRatio * 100) })
@@ -528,7 +531,11 @@ function ElementProcess({ item, patch, source, final, setFinal }: {
             {isSvg && <span className="badge">색 {palette.length}개</span>}
             {info && info.objects > 1 && <span className="badge warn">덩어리 {info.objects}개</span>}
             {info && info.white > 25 && <span className="badge warn">흰 테두리 의심</span>}
+            {!!item.edgeCut?.length && <span className="badge warn">원본 {item.edgeCut.join('·')} 가장자리에 닿음</span>}
           </div>
+        )}
+        {!!item.edgeCut?.length && (
+          <div className="note warn small">⚠️ 그림이 원본 이미지의 {item.edgeCut.join('·')} 끝에 닿아 있어요. 원래 그림이 잘려서 생성된 거라면 “불완전한 형태”로 거부될 수 있어요. 프롬프트에 “small even padding, fully inside the frame”이 들어가 있으니 다시 생성해 보세요.</div>
         )}
         {tooBig && <div className="note bad small">150KB를 넘었어요. 오른쪽 “세부 조정”에서 색상 수나 추적 해상도를 낮추고 다시 변환하세요.</div>}
         <p className="small muted">체크무늬 = 투명한 부분 · 빨간 점선 = 파일 가장자리(그림과 점선 사이가 거의 붙어 있어야 해요)</p>
@@ -545,6 +552,9 @@ function ElementProcess({ item, patch, source, final, setFinal }: {
           </button>
           <button className={`small listbtn ${opt.shrink ? 'on' : ''}`} onClick={() => setOpt({ ...opt, shrink: opt.shrink ? 0 : 1 })}>
             가장자리에 흰 테두리가 보여요 → 1px 깎기 {opt.shrink ? '✓' : ''}
+          </button>
+          <button className={`small listbtn ${marginPct ? 'on' : ''}`} onClick={() => setMarginPct(marginPct ? 0 : 0.5)}>
+            너무 꽉 끼어 보여요 → 여백 살짝 주기(0.5%) {marginPct ? '✓' : ''}
           </button>
           <button className={`small listbtn ${opt.keepLargestOnly ? 'on' : ''}`} onClick={() => setOpt({ ...opt, keepLargestOnly: !opt.keepLargestOnly })}>
             다른 조각이 같이 있어요 → 제일 큰 것만 남기기 {opt.keepLargestOnly ? '✓' : ''}
@@ -576,7 +586,11 @@ function ElementProcess({ item, patch, source, final, setFinal }: {
             {num('shrink', 0, 3, '경계 깎기(px)', '흰 테두리가 남을 때')}
             <label className="inline"><input type="checkbox" checked={opt.defringe} onChange={(e) => setOpt({ ...opt, defringe: e.target.checked })} />경계 부드럽게(흰 테두리 제거)</label>
             <label className="inline"><input type="checkbox" checked={opt.removeSpecks} onChange={(e) => setOpt({ ...opt, removeSpecks: e.target.checked })} />잔여 점 지우기</label>
-            <label>크롭 여백(px): {margin}<input type="range" min={0} max={10} value={margin} onChange={(e) => setMargin(+e.target.value)} /></label>
+            <label>여백 (피사체 크기 대비, 규칙상 최대 1%)
+              <select value={marginPct} onChange={(e) => setMarginPct(+e.target.value)}>
+                {[0, 0.25, 0.5, 0.75, 1].map((v) => <option key={v} value={v}>{v === 0 ? '없음(딱 맞게)' : `${v}%`}</option>)}
+              </select>
+            </label>
             {item.type === 'png' && <label className="inline"><input type="checkbox" checked={autoUp} onChange={(e) => setAutoUp(e.target.checked)} />최소 {item.smallSize ? spec.minPxSmall : spec.minPx}px까지 자동 확대</label>}
             {isSvg && (
               <>
@@ -724,7 +738,7 @@ function ReviewStep({ item, patch, final, others, save, openWork }: {
       }
       const res = await runAutoChecks({
         itemId: item.id, type: item.type, file: final, aspect: item.aspect, smallSize: item.smallSize, prompt: item.prompt,
-        promptLogCount: item.promptLog.length, title: item.title, keywords: item.keywords, dhash: h, others, durationSec: item.durationSec,
+        promptLogCount: item.promptLog.length, title: item.title, keywords: item.keywords, dhash: h, others, durationSec: item.durationSec, edgeCut: item.edgeCut,
       })
       patch({ autoChecks: res, dhash: h })
     } finally { setRunning(false) }
