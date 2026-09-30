@@ -57,7 +57,10 @@ export interface StoredBlob {
   key: string // `${itemId}:${kind}`
   itemId: string
   kind: 'source' | 'final' | 'thumb'
-  blob: Blob
+  /** 예전 방식(Blob 그대로). Safari에서 저장 실패가 있어 새로 저장할 땐 data/type 사용 */
+  blob?: Blob
+  data?: ArrayBuffer
+  type?: string
 }
 
 export interface Idea {
@@ -132,11 +135,17 @@ db.version(2).stores({
 export const uid = () => crypto.randomUUID()
 export const nowIso = () => new Date().toISOString()
 
+// Safari(맥 Dock 웹앱 포함)는 IndexedDB에 Blob/File을 넣다가
+// "Error preparing Blob/File data to be stored" 로 실패하는 경우가 있어 ArrayBuffer로 저장한다.
 export async function putBlob(itemId: string, kind: StoredBlob['kind'], blob: Blob) {
-  await db.blobs.put({ key: `${itemId}:${kind}`, itemId, kind, blob })
+  const data = await blob.arrayBuffer()
+  await db.blobs.put({ key: `${itemId}:${kind}`, itemId, kind, data, type: blob.type })
 }
-export async function getBlob(itemId: string, kind: StoredBlob['kind']) {
-  return (await db.blobs.get(`${itemId}:${kind}`))?.blob
+export async function getBlob(itemId: string, kind: StoredBlob['kind']): Promise<Blob | undefined> {
+  const r = await db.blobs.get(`${itemId}:${kind}`)
+  if (!r) return undefined
+  if (r.data) return new Blob([r.data], { type: r.type ?? '' })
+  return r.blob
 }
 export async function deleteItem(id: string) {
   await db.transaction('rw', db.items, db.blobs, async () => {
