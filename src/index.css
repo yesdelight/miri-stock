@@ -302,3 +302,5 @@ label.big input { font-size: 16px; padding: 10px 12px; font-weight: 400; }
   .stepper li:not(:has(.active)) .lbl { display: none; }
   .bottombar .muted { display: none; }
 }
+.seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 9px; background: var(--surface-2); }
+.seg button { border-color: transparent; }
