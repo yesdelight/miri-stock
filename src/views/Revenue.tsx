@@ -1,10 +1,12 @@
-// 수익 기록 — 디자인허브 정산 내역을 월별로 입력
+// 수익 기록 — 사이트별 정산 내역을 월별로 입력
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Trash2, Wallet } from 'lucide-react'
 import { useState } from 'react'
 import { TypeBadge } from '../components/ui'
 import { db, uid } from '../lib/db'
 import { TYPE_LABEL, type ElementType } from '../lib/rules'
+import { useSettings } from '../lib/settings'
+import { siteOf } from '../lib/sites'
 import { fmtWon, pad } from '../lib/utils'
 
 export function Revenue() {
@@ -14,6 +16,8 @@ export function Revenue() {
   const [amount, setAmount] = useState('')
   const [type, setType] = useState<'' | ElementType>('')
   const [memo, setMemo] = useState('')
+  const { sites } = useSettings()
+  const [site, setSite] = useState(sites[0]?.id ?? '')
 
   const months = Array.from({ length: 12 }, (_, i) => {
     const d = new Date(now.getFullYear(), now.getMonth() - 11 + i, 1)
@@ -26,7 +30,7 @@ export function Revenue() {
   const add = async () => {
     const n = Number(amount.replace(/[^\d.-]/g, ''))
     if (!n) return
-    await db.revenue.add({ id: uid(), month, amount: n, memo: memo || undefined, type: type || undefined })
+    await db.revenue.add({ id: uid(), month, amount: n, memo: memo || undefined, type: type || undefined, site: site || undefined })
     setAmount(''); setMemo('')
   }
 
@@ -41,10 +45,16 @@ export function Revenue() {
       <div className="grid g2">
         <div className="card col">
           <h3 style={{ margin: 0 }}>수익 기록 추가</h3>
-          <p className="small muted">디자인허브 정산 내역을 월별로 적어 두세요. 타입을 고르면 통계에서 어떤 타입이 잘 버는지 보여요.</p>
+          <p className="small muted">사이트 정산 내역을 월별로 적어 두세요. 사이트·타입을 고르면 통계에서 어디서, 어떤 타입이 잘 버는지 보여요.</p>
           <div className="rev-form">
             <label>월<input type="month" value={month} onChange={(e) => setMonth(e.target.value)} /></label>
             <label>금액(원)<input placeholder="예: 12000" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} /></label>
+            <label>사이트
+              <select value={site} onChange={(e) => setSite(e.target.value)}>
+                <option value="">모름</option>
+                {sites.map((x) => <option key={x.id} value={x.id}>{x.short}</option>)}
+              </select>
+            </label>
             <label>타입(선택)
               <select value={type} onChange={(e) => setType(e.target.value as typeof type)}>
                 <option value="">전체·모름</option>
@@ -75,11 +85,12 @@ export function Revenue() {
           <div className="empty-mini"><Wallet size={28} /><span>아직 기록이 없어요. 첫 정산을 받으면 위에서 추가해 보세요.</span></div>
         ) : (
           <table>
-            <thead><tr><th>월</th><th>금액</th><th>타입</th><th>메모</th><th /></tr></thead>
+            <thead><tr><th>월</th><th>금액</th><th>사이트</th><th>타입</th><th>메모</th><th /></tr></thead>
             <tbody>
               {rev.map((r) => (
                 <tr key={r.id}>
                   <td>{r.month}</td><td><b>{fmtWon(r.amount)}</b></td>
+                  <td>{r.site ? <span className="site-tag">{siteOf(sites, r.site).short}</span> : <span className="muted small">-</span>}</td>
                   <td>{r.type ? <TypeBadge type={r.type} /> : <span className="muted small">-</span>}</td>
                   <td className="small">{r.memo}</td>
                   <td><button className="ghost small danger" title="삭제" onClick={() => db.revenue.delete(r.id)}><Trash2 size={14} /></button></td>

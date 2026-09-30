@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { aiText, PROVIDER_LABEL } from '../lib/ai'
 import { exportBackup, importBackup } from '../lib/db'
 import { connectDrive, downloadFile, findFile, uploadFile } from '../lib/drive'
-import { updateSettings, useSettings, type Provider } from '../lib/settings'
+import { DEFAULT_SITES, updateSettings, useSettings, type Provider, type Site } from '../lib/settings'
 import { downloadBlob, ymd } from '../lib/utils'
 
 export function SettingsView() {
@@ -34,6 +34,8 @@ export function SettingsView() {
         </div>
         <p className="small muted">왼쪽 아래 해·달 버튼으로도 바꿀 수 있어요. 단축키는 <kbd>?</kbd>를 누르면 볼 수 있어요.</p>
       </div>
+
+      <SitesCard />
 
       <div className="card col">
         <h3>AI 연결</h3>
@@ -127,6 +129,51 @@ export function SettingsView() {
           <textarea rows={3} value={s.extraBannedWords} onChange={(e) => updateSettings({ extraBannedWords: e.target.value })} />
         </label>
       </div>
+    </div>
+  )
+}
+
+function SitesCard() {
+  const { sites } = useSettings()
+  const [draft, setDraft] = useState({ name: '', url: '' })
+  const edit = (id: string, p: Partial<Site>) => updateSettings({ sites: sites.map((x) => (x.id === id ? { ...x, ...p } : x)) })
+  const remove = (x: Site) => {
+    if (!confirm(`“${x.name}”을(를) 목록에서 뺄까요? 이미 남긴 심사 기록은 지워지지 않아요.`)) return
+    updateSettings({ sites: sites.filter((y) => y.id !== x.id) })
+  }
+  const add = () => {
+    const name = draft.name.trim()
+    if (!name) return
+    const id = name.toLowerCase().replace(/[^a-z0-9가-힣]+/g, '-').replace(/^-|-$/g, '') || `site-${Date.now()}`
+    if (sites.some((x) => x.id === id)) { alert('같은 이름의 사이트가 이미 있어요.'); return }
+    updateSettings({ sites: [...sites, { id, name, short: name.length > 8 ? name.slice(0, 8) : name, url: draft.url.trim() }] })
+    setDraft({ name: '', url: '' })
+  }
+  return (
+    <div className="card col">
+      <h3>올리는 사이트</h3>
+      <p className="small muted">보관함에서 사이트마다 심사 상태(심사 중·판매 중·거부)를 따로 기록해요. 왼쪽 메뉴의 바로가기도 이 목록을 따라가요.</p>
+      <div style={{ overflowX: 'auto' }}><table>
+        <thead><tr><th>이름</th><th>짧은 이름(뱃지)</th><th>주소</th><th /></tr></thead>
+        <tbody>
+          {sites.map((x) => (
+            <tr key={`${x.id}|${x.name}|${x.short}|${x.url}`}>
+              <td><input defaultValue={x.name} onBlur={(e) => e.target.value.trim() && edit(x.id, { name: e.target.value.trim() })} /></td>
+              <td><input defaultValue={x.short} style={{ width: 110 }} onBlur={(e) => e.target.value.trim() && edit(x.id, { short: e.target.value.trim() })} /></td>
+              <td><input defaultValue={x.url} placeholder="https://…" onBlur={(e) => edit(x.id, { url: e.target.value.trim() })} /></td>
+              <td><button className="ghost small danger" title="목록에서 빼기" disabled={sites.length <= 1} onClick={() => remove(x)}>빼기</button></td>
+            </tr>
+          ))}
+        </tbody>
+      </table></div>
+      <div className="row">
+        <input placeholder="사이트 이름 (예: Freepik)" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && add()} />
+        <input placeholder="주소 (선택)" value={draft.url} onChange={(e) => setDraft({ ...draft, url: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && add()} />
+        <button onClick={add} disabled={!draft.name.trim()}>추가</button>
+        <span className="grow" />
+        <button className="small ghost" onClick={() => confirm('기본 목록(디자인허브·툴디·Adobe Stock)으로 되돌릴까요?') && updateSettings({ sites: DEFAULT_SITES })}>기본값</button>
+      </div>
+      <p className="small muted">검수 규칙은 디자인허브 기준이에요. Adobe Stock은 제목·키워드를 영어로 쓰고, 올릴 때 “생성형 AI로 만듦”을 꼭 체크하세요.</p>
     </div>
   )
 }

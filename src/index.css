@@ -427,6 +427,20 @@ label.big input { font-size: 16px; padding: 10px 12px; font-weight: 400; }
 .ss { display: inline-flex; align-items: center; font-size: 12px; border-radius: 99px; padding: 5px 11px; }
 .ss.on { font-weight: 700; border-color: var(--text); background: var(--text); color: var(--bg); }
 .ss:disabled { opacity: .35; }
+.sbadges { display: flex; flex-wrap: wrap; gap: 3px; }
+.sb { font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 6px; border: 1px solid var(--line); color: var(--muted); background: transparent; white-space: nowrap; }
+.sb.st-none { opacity: .55; border-style: dashed; }
+.sb.st-uploaded { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
+.sb.st-approved { background: var(--ok-soft); color: var(--ok); border-color: transparent; }
+.sb.st-rejected { background: var(--bad-soft); color: var(--bad); border-color: transparent; }
+.site-rows { display: flex; flex-direction: column; gap: 8px; }
+.site-row { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; }
+.site-row.st-uploaded { border-color: var(--warn); }
+.site-row.st-approved { border-color: var(--ok); }
+.site-row.st-rejected { border-color: var(--bad); }
+.site-row a { color: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: 3px; }
+.site-row input[type=date] { padding: 2px 6px; font-size: 12px; margin-left: 4px; }
+.site-tag { font-size: 10.5px; font-weight: 700; padding: 0 6px; border-radius: 6px; background: var(--surface-2); color: var(--muted); margin-right: 4px; white-space: nowrap; }
 .d-info { display: grid; grid-template-columns: 70px 1fr; gap: 6px 10px; margin: 4px 0 0; font-size: 13px; }
 .d-info dt { color: var(--muted); }
 .d-info dd { margin: 0; word-break: break-word; }

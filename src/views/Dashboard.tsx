@@ -6,6 +6,7 @@ import { TypeBadge } from '../components/ui'
 import { db, type Item, type ItemStatus, type Plan } from '../lib/db'
 import { seasonEvents } from '../lib/seasons'
 import { useSettings } from '../lib/settings'
+import { allRecords, siteOf } from '../lib/sites'
 import { addDays, daysBetween, fmtWon, ymd } from '../lib/utils'
 import type { View } from '../App'
 import type { WorkbenchStart } from './Workbench'
@@ -13,7 +14,7 @@ import type { WorkbenchStart } from './Workbench'
 type Props = {
   openWork: (s: Omit<WorkbenchStart, 'key'>) => void
   go: (v: View) => void
-  goLibrary: (status?: ItemStatus) => void
+  goLibrary: (status?: ItemStatus, site?: string) => void
 }
 
 const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8))}`
@@ -27,7 +28,7 @@ export function Dashboard({ openWork, go, goLibrary }: Props) {
   const plans = useLiveQuery(() => db.plans.toArray(), []) ?? []
   const ideaCount = useLiveQuery(() => db.ideas.count(), []) ?? 0
   const revenue = useLiveQuery(() => db.revenue.toArray(), []) ?? []
-  const { leadDays } = useSettings()
+  const { leadDays, sites } = useSettings()
   const [showDone, setShowDone] = useState(false)
   const [hideGuide, setHideGuide] = useState(() => { try { return localStorage.getItem('miri-hide-guide') === '1' } catch { return false } })
   const today = ymd()
@@ -36,9 +37,12 @@ export function Dashboard({ openWork, go, goLibrary }: Props) {
   const tasks = plans.filter((p) => p.kind === 'task')
   const todayTasks = tasks.filter((p) => !p.done && p.start <= today).sort((a, b) => a.start.localeCompare(b.start))
   const ready = items.filter((i) => i.status === 'ready').sort((a, b) => (a.readyAt ?? '').localeCompare(b.readyAt ?? ''))
-  const reviewing = items.filter((i) => i.status === 'uploaded')
-    .map((i) => ({ i, days: daysBetween(i.uploadedAt ?? i.updatedAt.slice(0, 10), today) }))
+  const reviewing = allRecords(items).filter((r) => r.rec.status === 'uploaded')
+    .map((r) => ({ ...r, days: daysBetween(r.rec.uploadedAt, today) }))
     .sort((a, b) => b.days - a.days)
+  // 한 곳 이상 올렸지만 아직 안 올린 사이트가 있는 요소
+  const posted = items.filter((i) => i.status !== 'making' && i.status !== 'ready' && !i.fileLost?.length)
+  const missing = sites.map((x) => ({ x, n: posted.filter((i) => !i.sites?.[x.id]).length })).filter((m) => m.n > 0)
   const making = items.filter((i) => i.status === 'making').sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
 
   // 다가오는 2주: 안 끝난 것 먼저, 끝난 것은 접어서 아래
@@ -59,7 +63,7 @@ export function Dashboard({ openWork, go, goLibrary }: Props) {
   const guide = [
     { done: ideaCount > 0 || plans.length > 0, title: '만들 거리 모으기', desc: '캘린더·아이디어에서 AI 추천이나 트렌드 서치로 주제를 모아요', go: () => go('calendar') },
     { done: items.length > 0, title: '첫 요소 만들기', desc: '작업대 4단계를 따라가면 규칙에 맞게 다듬고 검수까지 해줘요', go: () => openWork({}) },
-    { done: items.some((i) => i.uploadedAt), title: '올리고 기록하기', desc: '디자인허브에 올린 뒤 상태를 “심사 중”으로 바꾸면 여기서 챙겨줘요', go: () => goLibrary('ready') },
+    { done: items.some((i) => i.uploadedAt), title: '올리고 기록하기', desc: '사이트에 올린 뒤 보관함에서 사이트별로 “심사 중”을 기록하면 여기서 챙겨줘요', go: () => goLibrary('ready') },
   ]
   const showGuide = !hideGuide && guide.some((g) => !g.done)
   const summary = [
@@ -112,11 +116,23 @@ export function Dashboard({ openWork, go, goLibrary }: Props) {
 
         <TodayCard
           tone="upload" icon={<UploadCloud size={18} />} title="올릴 것" count={ready.length}
-          empty="검수를 통과한 요소가 없어요."
-          foot={ready.length > 0 && (
-            <div className="row">
-              <a href="https://designhub.miricanvas.com/ko/login" target="_blank" rel="noreferrer"><button className="small primary"><ExternalLink size={13} />디자인허브 열기</button></a>
-              <button className="small" onClick={() => goLibrary('ready')}>보관함에서 보기</button>
+          empty={missing.length ? '새로 올릴 건 없어요. 아래에서 다른 사이트에도 올려 보세요.' : '검수를 통과한 요소가 없어요.'}
+          foot={(ready.length > 0 || missing.length > 0) && (
+            <div className="col" style={{ gap: 6 }}>
+              {ready.length > 0 && (
+                <div className="row" style={{ gap: 4 }}>
+                  {sites.filter((x) => x.url).map((x) => (
+                    <a key={x.id} href={x.url} target="_blank" rel="noreferrer"><button className="small"><ExternalLink size={12} />{x.short}</button></a>
+                  ))}
+                  <button className="small primary" onClick={() => goLibrary('ready')}>보관함에서 보기</button>
+                </div>
+              )}
+              {missing.length > 0 && (
+                <div className="small muted row" style={{ gap: 4 }}>
+                  다른 곳에도 올리기:
+                  {missing.map((m) => <button key={m.x.id} className="linkbtn" onClick={() => goLibrary('ready', m.x.id)}>{m.x.short} {m.n}개</button>)}
+                </div>
+              )}
             </div>
           )}
         >
@@ -128,8 +144,8 @@ export function Dashboard({ openWork, go, goLibrary }: Props) {
           empty="심사 중인 요소가 없어요."
           foot={reviewing.length > 0 && <button className="small" onClick={() => goLibrary('uploaded')}>결과 입력하러 가기 →</button>}
         >
-          {reviewing.slice(0, 4).map(({ i, days }) => (
-            <Row key={i.id} item={i} sub={<span className={`badge ${days >= 14 ? 'bad' : days >= 7 ? 'warn' : ''}`}>{days}일째 기다림</span>} action="결과" onGo={() => goLibrary('uploaded')} />
+          {reviewing.slice(0, 4).map(({ i, site, days }) => (
+            <Row key={i.id + site} item={i} sub={<><span className="site-tag">{siteOf(sites, site).short}</span><span className={`badge ${days >= 14 ? 'bad' : days >= 7 ? 'warn' : ''}`}>{days}일째</span></>} action="결과" onGo={() => goLibrary('uploaded', site)} />
           ))}
         </TodayCard>
       </section>

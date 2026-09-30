@@ -36,8 +36,8 @@ export default function App() {
   const [view, setView] = useState<View>('home')
   const [start, setStart] = useState<WorkbenchStart>({ key: 0 })
   const [keysOpen, setKeysOpen] = useState(false)
-  const [lib, setLib] = useState<{ key: number; status?: ItemStatus }>({ key: 0 })
-  const goLibrary = (status?: ItemStatus) => { setLib({ key: Date.now(), status }); setView('library') }
+  const [lib, setLib] = useState<{ key: number; status?: ItemStatus; site?: string }>({ key: 0 })
+  const goLibrary = (status?: ItemStatus, site?: string) => { setLib({ key: Date.now(), status, site }); setView('library') }
 
   const openWork = (w: Omit<WorkbenchStart, 'key'>) => {
     setStart({ ...w, key: Date.now() })
@@ -88,12 +88,11 @@ export default function App() {
           </button>
         ))}
         <div className="spacer" />
-        <a className="navbtn" href="https://designhub.miricanvas.com/ko/login" target="_blank" rel="noreferrer" title="미리캔버스 디자인허브(새 창)">
-          <Globe size={17} /><span className="grow">디자인허브</span><span className="muted small">↗</span>
-        </a>
-        <a className="navbtn" href="https://www.tooldi.com/creator/channel/MjE0NTU0" target="_blank" rel="noreferrer" title="툴디 크리에이터 채널(새 창)">
-          <Store size={17} /><span className="grow">툴디</span><span className="muted small">↗</span>
-        </a>
+        {s.sites.filter((x) => x.url).map((x, i) => (
+          <a key={x.id} className="navbtn" href={x.url} target="_blank" rel="noreferrer" title={`${x.name}(새 창)`}>
+            {i === 0 ? <Globe size={17} /> : <Store size={17} />}<span className="grow">{x.short}</span><span className="muted small">↗</span>
+          </a>
+        ))}
         <button className={`navbtn ${view === 'rules' ? 'active' : ''}`} onClick={() => setView('rules')}><Ruler size={17} /><span className="grow">규칙</span></button>
         <button className={`navbtn ${view === 'settings' ? 'active' : ''}`} onClick={() => setView('settings')}><Settings size={17} /><span className="grow">설정</span></button>
         <div className="nav-foot">
@@ -106,7 +105,7 @@ export default function App() {
         {view === 'home' && <Dashboard openWork={openWork} go={setView} goLibrary={goLibrary} />}
         {view === 'calendar' && <Planner openWork={openWork} />}
         {view === 'work' && <Workbench key={start.key} start={start} openWork={openWork} />}
-        {view === 'library' && <Library key={lib.key} openWork={openWork} initialStatus={lib.status} />}
+        {view === 'library' && <Library key={lib.key} openWork={openWork} initialStatus={lib.status} initialSite={lib.site} />}
         {view === 'stats' && <Stats />}
         {view === 'rules' && <RulesView />}
         {view === 'settings' && <SettingsView />}

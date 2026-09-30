@@ -3,6 +3,21 @@ import { useSyncExternalStore } from 'react'
 export type Provider = 'claude' | 'openai' | 'gemini'
 export type AiMode = 'api' | 'manual'
 
+/** 요소를 올리는 사이트 — 설정에서 추가·수정 */
+export interface Site {
+  id: string
+  name: string
+  /** 뱃지에 쓰는 짧은 이름 */
+  short: string
+  url: string
+}
+
+export const DEFAULT_SITES: Site[] = [
+  { id: 'designhub', name: '미리캔버스 디자인허브', short: '디자인허브', url: 'https://designhub.miricanvas.com/ko/login' },
+  { id: 'tooldi', name: '툴디', short: '툴디', url: 'https://www.tooldi.com/creator/channel/MjE0NTU0' },
+  { id: 'adobe', name: 'Adobe Stock', short: 'Adobe', url: 'https://contributor.stock.adobe.com/' },
+]
+
 export interface Settings {
   aiMode: AiMode
   textProvider: Provider
@@ -25,6 +40,8 @@ export interface Settings {
   leadDays: number
   /** 화면 테마 */
   theme: 'auto' | 'light' | 'dark'
+  /** 올리는 사이트 목록 */
+  sites: Site[]
 }
 
 const DEFAULTS: Settings = {
@@ -46,6 +63,7 @@ const DEFAULTS: Settings = {
   extraBannedWords: '',
   leadDays: 45,
   theme: 'auto',
+  sites: DEFAULT_SITES,
 }
 
 const KEY = 'miri-stock-settings'
@@ -59,6 +77,7 @@ function load(): Settings {
     // 이전에 빈 값으로 저장돼 있어도 기본 클라이언트 ID·폴더를 사용
     if (!s.googleClientId) s.googleClientId = DEFAULTS.googleClientId
     if (!s.driveFolderId) s.driveFolderId = DEFAULTS.driveFolderId
+    if (!Array.isArray(s.sites) || !s.sites.length) s.sites = DEFAULT_SITES
     return s
   } catch {
     return { ...DEFAULTS }
