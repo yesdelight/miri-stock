@@ -339,3 +339,6 @@ label.big input { font-size: 16px; padding: 10px 12px; font-weight: 400; }
 
 .update-banner { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 90; display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 16px; border-radius: 99px; background: var(--text); color: var(--bg); box-shadow: 0 6px 24px rgb(0 0 0 / .2); font-size: 13px; }
 .navcount { margin-left: 6px; font-size: 11px; font-weight: 700; padding: 0 7px; border-radius: 99px; background: var(--accent); color: #fff; }
+.navlink { display: block; padding: 9px 10px; border-radius: 8px; color: var(--text); text-decoration: none; white-space: nowrap; }
+.navlink:hover { background: var(--surface-2); }
+.navlink span { color: var(--muted); font-size: 12px; }
