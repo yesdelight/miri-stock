@@ -189,7 +189,8 @@ label.inline { flex-direction: row; align-items: center; gap: 8px; color: var(--
   min-height: 240px; max-height: 520px; overflow: hidden; position: relative;
 }
 .canvasbox img, .canvasbox video { max-width: 100%; max-height: 500px; display: block; }
-.canvasbox.outline img { outline: 1px dashed var(--bad); }
+.canvasbox.outline { padding: 14px; }
+.canvasbox.outline img { outline: 1.5px dashed var(--bad); outline-offset: 0; max-height: 470px; }
 .checklist { display: flex; flex-direction: column; gap: 6px; }
 .check { display: grid; grid-template-columns: 22px 1fr; gap: 8px; padding: 8px 10px; border-radius: 8px; background: var(--surface-2); align-items: start; }
 .check.ok { background: var(--ok-soft); }
