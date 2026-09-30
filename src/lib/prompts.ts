@@ -86,6 +86,21 @@ JSON: {"title":"...","keywords":["..."]}`,
   }
 }
 
+/** 여러 요소의 제목·키워드를 한 번에 (수동 모드에서 한 번만 복사·붙여넣기 하도록) */
+export function batchMetadataRequest(type: ElementType, list: { n: number; topic: string; prompt?: string }[]): AiRequest {
+  return {
+    system: base(),
+    prompt: `미리캔버스 ${TYPE_LABEL[type]} ${list.length}개의 업로드 정보를 각각 써줘.
+${list.map((x) => `${x.n}. 주제: ${x.topic}${x.prompt ? ` / 생성 프롬프트: ${x.prompt}` : ''}`).join('\n')}
+
+- 제목: 한국어, 짧고 검색되는 명사형. 같은 주제라도 각 요소의 차별점(구도·재질·스타일)이 드러나게 서로 다르게.
+- 키워드: 각 요소마다 한국어 20~30개. 요소와 직접 관련 없는 키워드는 거절 사유(잘못된 키워드)이니 넣지 마. 사용자가 실제 검색할 단어(소재, 용도, 시즌, 분위기, 색, 스타일). 영어 1~3개 섞어도 됨.
+- 작가명·캐릭터명·브랜드명·"~풍", "~스타일로" 금지.
+JSON: [{"n":1,"title":"...","keywords":["..."]}]`,
+    effort: 'low',
+  }
+}
+
 export function reviewRequest(type: ElementType): AiRequest {
   const aiRules = rulesFor(type).filter((r) => r.mode === 'ai')
   return {

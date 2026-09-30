@@ -42,6 +42,8 @@ export interface Settings {
   theme: 'auto' | 'light' | 'dark'
   /** 올리는 사이트 목록 */
   sites: Site[]
+  /** API 무료 크레딧 끝나는 날(YYYY-MM-DD) — 홈에서 미리 알려줌 */
+  creditEndsAt: string
 }
 
 const DEFAULTS: Settings = {
@@ -64,6 +66,7 @@ const DEFAULTS: Settings = {
   leadDays: 45,
   theme: 'auto',
   sites: DEFAULT_SITES,
+  creditEndsAt: '',
 }
 
 const KEY = 'miri-stock-settings'

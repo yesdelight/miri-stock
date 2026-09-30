@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { AiRunner } from '../components/AiRunner'
 import { toast } from '../components/toast'
 import { StatusBadge, TypeBadge, useObjectUrl } from '../components/ui'
-import { aiImage, blobToBase64, CHAT_URL, PROVIDER_LABEL } from '../lib/ai'
+import { aiImage, blobToBase64, CHAT_URL, isLimitError, PROVIDER_LABEL } from '../lib/ai'
 import { runAutoChecks, videoDuration } from '../lib/checks'
 import { db, getBlob, nowIso, promptKey, putBlob, toMemoryBlob, uid, type CheckResult, type Item, type SavedPrompt } from '../lib/db'
 import { driveConnected } from '../lib/drive'
@@ -26,6 +26,8 @@ export interface WorkbenchStart {
   type?: ElementType
   planId?: string
   notes?: string
+  /** 불러온 뒤 열 단계(0부터) — 한 번에 여러 개 만들기의 검수 대기 줄에서 3(검수·저장)으로 */
+  step?: number
 }
 
 const STEPS = [
@@ -51,7 +53,7 @@ function newItem(s: WorkbenchStart): Item {
   }
 }
 
-export function Workbench({ start, openWork }: { start: WorkbenchStart; openWork: (s: Omit<WorkbenchStart, 'key'>) => void }) {
+export function Workbench({ start, openWork, onBatch }: { start: WorkbenchStart; openWork: (s: Omit<WorkbenchStart, 'key'>) => void; onBatch?: () => void }) {
   const [item, setItem] = useState<Item | null>(start.itemId ? null : newItem(start))
   const [step, setStep] = useState(0)
   const [source, setSource] = useState<Blob | null>(null)
@@ -92,8 +94,9 @@ export function Workbench({ start, openWork }: { start: WorkbenchStart; openWork
       setSource(src)
       setFinal(fin)
       setSaved(true)
-      setStep(lost.length ? (src ? 2 : 1) : it.status === 'making' ? 2 : 3)
+      setStep(lost.length ? (src ? 2 : 1) : start.step ?? (it.status === 'making' ? 2 : 3))
     })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [start.itemId])
 
   if (!item) return <p className="muted">불러오는 중…</p>
@@ -188,6 +191,7 @@ export function Workbench({ start, openWork }: { start: WorkbenchStart; openWork
             <span className="small muted">{saved ? '✓ 보관함에 자동 저장' : '이미지를 올리면 자동 저장돼요'}</span>
           )}
           <button className="small" onClick={() => openWork({})}>＋ 새로 시작</button>
+          {onBatch && <button className="small" onClick={onBatch} title="주제 하나로 여러 개를 한 번에">📦 여러 개 한 번에</button>}
         </div>
       </div>
 
@@ -396,6 +400,7 @@ function SourceStep({ item, source, onSource, onDirectFinal }: {
   const s = useSettings()
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  const [limit, setLimit] = useState(false)
   const url = useObjectUrl(source)
   const inputRef = useRef<HTMLInputElement>(null)
   const fullPrompt = `${item.prompt ?? item.title}\n\n${PROMPT_RULES[item.type]}`
@@ -428,7 +433,7 @@ function SourceStep({ item, source, onSource, onDirectFinal }: {
       const a = ASPECTS.find((x) => x.id === item.aspect)
       const size = item.type === 'background' && a ? (a.w > a.h ? 'landscape' : a.w < a.h ? 'portrait' : 'square') : 'square'
       onSource(await aiImage(fullPrompt, size))
-    } catch (e) { setErr((e as Error).message) } finally { setBusy(false) }
+    } catch (e) { setErr((e as Error).message); setLimit(isLimitError(e)) } finally { setBusy(false) }
   }
 
   const sendTo = async (p: Provider) => {
@@ -458,6 +463,9 @@ function SourceStep({ item, source, onSource, onDirectFinal }: {
         <input ref={inputRef} type="file" accept={accept} hidden onChange={(e) => e.target.files?.[0] && take(e.target.files[0])} />
         {source && <button className="small" style={{ alignSelf: 'flex-start' }} onClick={() => inputRef.current?.click()}>다른 파일로 바꾸기</button>}
         {err && <div className="note bad small">{err}</div>}
+        {limit && s.imageProvider !== 'manual' && (
+          <button className="small primary" style={{ alignSelf: 'flex-start' }} onClick={() => { updateSettings({ imageProvider: 'manual' }); setErr(''); setLimit(false) }}>구독 계정 수동 모드로 계속하기</button>
+        )}
       </div>
       <div className="card col">
         {item.type === 'video' ? (

@@ -1,11 +1,11 @@
 // 홈: 오늘 할 일 중심 — 만들 것 / 올릴 것 / 심사 결과 확인할 것
 import { useLiveQuery } from 'dexie-react-hooks'
-import { ArrowRight, CalendarDays, CheckCircle2, ChevronDown, ExternalLink, Hammer, Hourglass, Sparkles, UploadCloud } from 'lucide-react'
+import { ArrowRight, CalendarDays, Layers, CheckCircle2, ChevronDown, ExternalLink, Hammer, Hourglass, Sparkles, UploadCloud } from 'lucide-react'
 import { useState } from 'react'
 import { TypeBadge } from '../components/ui'
 import { db, type Item, type ItemStatus, type Plan } from '../lib/db'
 import { seasonEvents } from '../lib/seasons'
-import { useSettings } from '../lib/settings'
+import { updateSettings, useSettings } from '../lib/settings'
 import { allRecords, siteOf } from '../lib/sites'
 import { addDays, daysBetween, fmtWon, ymd } from '../lib/utils'
 import type { View } from '../App'
@@ -15,6 +15,26 @@ type Props = {
   openWork: (s: Omit<WorkbenchStart, 'key'>) => void
   go: (v: View) => void
   goLibrary: (status?: ItemStatus, site?: string) => void
+}
+
+/** API 크레딧 끝나는 날이 다가오면(3주 전부터) 알림 */
+function CreditNotice({ go }: { go: (v: View) => void }) {
+  const s = useSettings()
+  if (s.aiMode !== 'api' || !s.creditEndsAt) return null
+  const left = daysBetween(ymd(), s.creditEndsAt)
+  if (left > 21) return null
+  return (
+    <div className={`note ${left < 0 ? 'bad' : 'warn'} small row between`}>
+      <span>
+        {left < 0 ? <><b>API 무료 크레딧 기간이 끝났어요.</b> 계속 API를 쓰면 요금이 나갈 수 있어요. 구독 계정 수동 모드로 바꾸면 똑같이 쓸 수 있어요.</>
+          : <><b>API 무료 크레딧이 {left}일 뒤({s.creditEndsAt}) 끝나요.</b> 끝나면 구독 계정 수동 모드로 계속 쓰면 돼요. 그 전에 시즌 요소를 몰아서 만들어 두세요.</>}
+      </span>
+      <span className="row">
+        {left < 0 && <button className="small primary" onClick={() => updateSettings({ aiMode: 'manual', imageProvider: 'manual' })}>수동 모드로 바꾸기</button>}
+        <button className="small" onClick={() => go('settings')}>설정</button>
+      </span>
+    </div>
+  )
 }
 
 const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8))}`
@@ -82,9 +102,12 @@ export function Dashboard({ openWork, go, goLibrary }: Props) {
         </div>
         <div className="row">
           <button onClick={() => go('calendar')}><CalendarDays size={15} />캘린더</button>
+          <button onClick={() => go('batch')}><Layers size={15} />여러 개 한 번에</button>
           <button className="primary" onClick={() => openWork({})}><Sparkles size={15} />새 요소 만들기</button>
         </div>
       </header>
+
+      <CreditNotice go={go} />
 
       {showGuide && (
         <div className="card col">

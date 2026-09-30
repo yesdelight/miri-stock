@@ -12,6 +12,25 @@ export interface AiRequest {
   effort?: 'low' | 'medium' | 'high'
 }
 
+/** 크레딧·결제·사용 한도 문제 — 수동 모드로 계속하라고 안내 */
+export class AiLimitError extends Error {
+  constructor(provider: string, detail: string) {
+    super(`${provider} 사용 한도나 크레딧이 끝난 것 같아요(${detail.slice(0, 120)}). 구독 계정 수동 모드로 계속할 수 있어요.`)
+    this.name = 'AiLimitError'
+  }
+}
+
+const LIMIT_RE = /quota|billing|credit|exceeded|exhausted|insufficient|payment|rate.?limit|balance|free tier|limit: 0/i
+
+/** 응답 오류가 한도·결제 문제면 AiLimitError, 아니면 일반 Error */
+export function apiError(provider: string, status: number, message?: string): Error {
+  const msg = message ?? `${provider} 오류 ${status}`
+  if (status === 402 || status === 429 || (status === 403 && LIMIT_RE.test(msg)) || LIMIT_RE.test(msg)) return new AiLimitError(provider, msg)
+  return new Error(msg)
+}
+
+export const isLimitError = (e: unknown) => e instanceof AiLimitError
+
 export const PROVIDER_LABEL: Record<Provider, string> = { claude: 'Claude', openai: 'ChatGPT', gemini: 'Gemini' }
 export const CHAT_URL: Record<Provider, string> = {
   claude: 'https://claude.ai/new',
@@ -26,6 +45,16 @@ export async function aiText(req: AiRequest, provider: Provider = getSettings().
 }
 
 async function claudeText(req: AiRequest): Promise<string> {
+  try {
+    return await claudeTextInner(req)
+  } catch (e) {
+    const st = (e as { status?: number }).status
+    if (st && (st === 402 || st === 429 || LIMIT_RE.test((e as Error).message))) throw new AiLimitError('Claude', (e as Error).message)
+    throw e
+  }
+}
+
+async function claudeTextInner(req: AiRequest): Promise<string> {
   const s = getSettings()
   if (!s.anthropicKey) throw new Error('설정에서 Anthropic API 키를 입력하세요.')
   const client = new Anthropic({ apiKey: s.anthropicKey, dangerouslyAllowBrowser: true })
@@ -82,7 +111,7 @@ async function openaiText(req: AiRequest): Promise<string> {
     }),
   })
   const j = await res.json()
-  if (!res.ok) throw new Error(j.error?.message ?? `OpenAI 오류 ${res.status}`)
+  if (!res.ok) throw apiError('OpenAI', res.status, j.error?.message)
   if (typeof j.output_text === 'string') return j.output_text
   return (j.output ?? [])
     .flatMap((o: { content?: { type: string; text?: string }[] }) => o.content ?? [])
@@ -109,7 +138,7 @@ async function geminiText(req: AiRequest): Promise<string> {
     },
   )
   const j = await res.json()
-  if (!res.ok) throw new Error(j.error?.message ?? `Gemini 오류 ${res.status}`)
+  if (!res.ok) throw apiError('Gemini', res.status, j.error?.message)
   return (j.candidates?.[0]?.content?.parts ?? []).map((p: { text?: string }) => p.text ?? '').join('')
 }
 
@@ -130,7 +159,7 @@ export async function aiImage(prompt: string, size: 'square' | 'landscape' | 'po
       }),
     })
     const j = await res.json()
-    if (!res.ok) throw new Error(j.error?.message ?? `OpenAI 이미지 오류 ${res.status}`)
+    if (!res.ok) throw apiError('OpenAI 이미지', res.status, j.error?.message)
     return b64ToBlob(j.data[0].b64_json, 'image/png')
   }
   if (s.imageProvider === 'gemini') {
@@ -148,7 +177,7 @@ export async function aiImage(prompt: string, size: 'square' | 'landscape' | 'po
       },
     )
     const j = await res.json()
-    if (!res.ok) throw new Error(j.error?.message ?? `Gemini 이미지 오류 ${res.status}`)
+    if (!res.ok) throw apiError('Gemini 이미지', res.status, j.error?.message)
     const part = (j.candidates?.[0]?.content?.parts ?? []).find((p: { inlineData?: unknown }) => p.inlineData)
     if (!part) throw new Error('Gemini가 이미지를 돌려주지 않았어요.')
     return b64ToBlob(part.inlineData.data, part.inlineData.mimeType ?? 'image/png')

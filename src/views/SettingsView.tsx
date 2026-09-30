@@ -80,6 +80,14 @@ export function SettingsView() {
               {field('geminiModel', 'Gemini 모델')}
             </div>
             <button className="small" onClick={() => act(async () => `연결 성공: ${(await aiText({ system: '짧게 답해.', prompt: '"연결 OK"라고만 답해.', effort: 'low' })).slice(0, 60)}`)}>연결 테스트</button>
+            <label>무료 크레딧 끝나는 날 (선택)
+              <input type="date" value={s.creditEndsAt} onChange={(e) => updateSettings({ creditEndsAt: e.target.value })} style={{ maxWidth: 200 }} />
+            </label>
+            <div className="note small">
+              💡 크레딧(예: Google Cloud 무료 체험)이 끝나도 앱은 그대로 쓸 수 있어요. 끝나기 3주 전부터 홈에서 알려주고,
+              한도·결제 오류가 나면 같은 작업을 <b>구독 계정 수동 모드</b>(복사 → 채팅 → 붙여넣기)로 바로 이어가요.
+              모르는 사이 요금이 나가지 않게 Google Cloud 콘솔에서 <b>예산 알림</b>을 걸어 두세요.
+            </div>
           </>
         )}
         <label>이미지 생성
