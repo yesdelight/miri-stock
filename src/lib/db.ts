@@ -82,6 +82,22 @@ export interface Plan {
   done?: boolean
 }
 
+/** AI가 추천한 프롬프트 보관 — 주제·타입별로 남겨 다음 작업에 재사용 */
+export interface SavedPrompt {
+  id: string
+  /** `${type}:${주제}` */
+  key: string
+  topic: string
+  type: import('./rules').ElementType
+  prompt: string
+  memo?: string
+  createdAt: string
+  /** 이 프롬프트로 만든 요소 */
+  usedBy?: string
+}
+
+export const promptKey = (type: string, topic: string) => `${type}:${topic.trim().toLowerCase().replace(/\s+/g, ' ')}`
+
 export interface Revenue {
   id: string
   month: string // YYYY-MM
@@ -96,6 +112,7 @@ export const db = new Dexie('miri-stock') as Dexie & {
   ideas: EntityTable<Idea, 'id'>
   plans: EntityTable<Plan, 'id'>
   revenue: EntityTable<Revenue, 'id'>
+  promptBank: EntityTable<SavedPrompt, 'id'>
 }
 
 db.version(1).stores({
@@ -104,6 +121,10 @@ db.version(1).stores({
   ideas: 'id, createdAt',
   plans: 'id, start, end, kind',
   revenue: 'id, month',
+})
+// v2: 프롬프트 보관함 추가 (기존 데이터는 그대로)
+db.version(2).stores({
+  promptBank: 'id, key, usedBy, createdAt',
 })
 
 export const uid = () => crypto.randomUUID()
@@ -131,14 +152,16 @@ export async function exportBackup() {
     ideas: await db.ideas.toArray(),
     plans: await db.plans.toArray(),
     revenue: await db.revenue.toArray(),
+    promptBank: await db.promptBank.toArray(),
   }
 }
 
 export async function importBackup(data: Awaited<ReturnType<typeof exportBackup>>) {
-  await db.transaction('rw', [db.items, db.ideas, db.plans, db.revenue], async () => {
+  await db.transaction('rw', [db.items, db.ideas, db.plans, db.revenue, db.promptBank], async () => {
     await db.items.bulkPut(data.items ?? [])
     await db.ideas.bulkPut(data.ideas ?? [])
     await db.plans.bulkPut(data.plans ?? [])
     await db.revenue.bulkPut(data.revenue ?? [])
+    await db.promptBank.bulkPut(data.promptBank ?? [])
   })
 }
