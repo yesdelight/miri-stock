@@ -4,11 +4,42 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#4f6bed" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
     <title>Miri Stock</title>
+    <!-- 시작 화면: JS가 뜨기 전부터 바로 보이도록 인라인 스타일 -->
+    <style>
+      .splash { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+        background: #f6f5f2; color: #1f1d1a; font-family: 'Pretendard', 'Apple SD Gothic Neo', system-ui, sans-serif; z-index: 1000; transition: opacity .35s ease; }
+      .splash.hide { opacity: 0; pointer-events: none; }
+      .splash .logo { width: 72px; height: 72px; border-radius: 20px; background: linear-gradient(135deg, #4f6bed, #8a5cf6);
+        display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 30px rgb(79 107 237 / .35); animation: pop .6s cubic-bezier(.2,1.4,.4,1) both; }
+      .splash .logo svg { width: 40px; height: 40px; }
+      .splash .name { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; animation: up .5s .1s ease both; }
+      .splash .sub { font-size: 13px; color: #6d6860; margin-top: -8px; animation: up .5s .15s ease both; }
+      .splash .bar { width: 160px; height: 4px; border-radius: 99px; background: #e2dfd8; overflow: hidden; margin-top: 6px; }
+      .splash .bar span { display: block; width: 40%; height: 100%; border-radius: 99px; background: #4f6bed; animation: slide 1.1s ease-in-out infinite; }
+      .splash .msg { font-size: 12px; color: #6d6860; min-height: 16px; }
+      @keyframes pop { from { transform: scale(.6); opacity: 0 } }
+      @keyframes up { from { transform: translateY(6px); opacity: 0 } }
+      @keyframes slide { 0% { transform: translateX(-110%) } 100% { transform: translateX(260%) } }
+      @media (prefers-color-scheme: dark) {
+        .splash { background: #161514; color: #ece9e3; }
+        .splash .sub, .splash .msg { color: #a09b92; }
+        .splash .bar { background: #37352f; }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="splash" id="boot-splash">
+        <div class="logo"><svg viewBox="0 0 32 32"><path d="M8 22V10l8 7 8-7v12" fill="none" stroke="#fff" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/></svg></div>
+        <div class="name">Miri Stock</div>
+        <div class="sub">디자인허브 요소 작업실</div>
+        <div class="bar"><span></span></div>
+        <div class="msg">작업실 여는 중…</div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
