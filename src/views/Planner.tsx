@@ -18,6 +18,7 @@ export function Planner({ openWork }: { openWork: Open }) {
   const [mode, setMode] = useState<'ahead' | 'month'>('ahead')
   const [offset, setOffset] = useState(0)
   const [showSeasons, setShowSeasons] = useState(true)
+  const [hideDone, setHideDone] = useState(() => { try { return localStorage.getItem('miri-hide-done') === '1' } catch { return false } })
   const [edit, setEdit] = useState<Partial<Plan> | null>(null)
   const [dropDay, setDropDay] = useState<string | null>(null)
   const plans = useLiveQuery(() => db.plans.toArray(), []) ?? []
@@ -85,6 +86,7 @@ export function Planner({ openWork }: { openWork: Open }) {
           </div>
           <div className="row">
             <label className="inline small"><input type="checkbox" checked={showSeasons} onChange={(e) => setShowSeasons(e.target.checked)} />시즌 표시</label>
+            <label className="inline small"><input type="checkbox" checked={hideDone} onChange={(e) => { setHideDone(e.target.checked); try { localStorage.setItem('miri-hide-done', e.target.checked ? '1' : '0') } catch { /* 무시 */ } }} />완료 숨기기</label>
             <button className="small" onClick={() => setEdit({ kind: 'theme', start: today, end: addDays(today, 6), types: [] })}>+ 테마</button>
             <button className="small" onClick={() => setEdit({ kind: 'task', start: today, end: today, types: ['svg'] })}>+ 작업</button>
           </div>
@@ -120,7 +122,8 @@ export function Planner({ openWork }: { openWork: Open }) {
           {DOW.map((d) => <div key={d} className="dow">{d}</div>)}
           {days.map((day) => {
             const inMonth = mode === 'ahead' ? day >= today : day.startsWith(monthStr)
-            const tasks = plans.filter((p) => p.kind === 'task' && p.start === day)
+            // 안 끝난 작업이 위, 끝난 작업은 아래(흐리게) — 또는 숨김
+            const tasks = plans.filter((p) => p.kind === 'task' && p.start === day && !(hideDone && p.done)).sort((a, b) => Number(!!a.done) - Number(!!b.done))
             const themes = plans.filter((p) => p.kind === 'theme' && (p.start === day || (p.start < day && p.end >= day && new Date(day).getDay() === 1)))
             const seas = showSeasons ? seasons.filter((s) => s.start === day) : []
             const up = items.filter((i) => i.uploadedAt === day).length

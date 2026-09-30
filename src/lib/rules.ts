@@ -91,6 +91,7 @@ export const RULES: Rule[] = [
   { id: 'own-prompt', group: 'ai-upload', types: ALL, mode: 'auto', text: '내가 직접 작성한 프롬프트로 만들었고, 프롬프트 기록이 저장돼 있다', detail: '관리자 요청 시 증빙 필요 — 앱이 프롬프트 기록을 저장' },
 
   // ⛔️ 대표 거부사유
+  { id: 'no-basic-shape', group: 'ai-reject', types: ELEMENTS, mode: 'ai', text: '기본 도형·선·화살표·말풍선처럼 미리캔버스 무료 요소로 대체되는 단순한 형태가 아니다', detail: '입체 느낌의 말풍선도 거절 사례 있음 — 디테일을 더하거나 아예 제출하지 않기. 흔한 스테디셀러 꾸미기 요소도 이미 선점돼 있어 가치 없이 거부될 수 있음' },
   { id: 'no-deform', group: 'ai-reject', types: ALL, mode: 'ai', text: '일그러지거나 상식에 반하는 불완전한 형태가 없다', detail: '손가락 개수, 뭉개진 선, 이상한 글자, 비대칭 눈 등' },
   { id: 'no-uncanny', group: 'ai-reject', types: ALL, mode: 'ai', text: '불쾌한 골짜기·불쾌감·혐오감을 주는 과도한 표현이 없다' },
   { id: 'no-prompt-abuse', group: 'ai-reject', types: ALL, mode: 'auto', text: '같은 프롬프트로 찍어낸 유사 요소가 아니다(독창성)', detail: '기존 프롬프트·이미지와 유사도를 자동 비교' },
@@ -119,6 +120,7 @@ export const RULES: Rule[] = [
   { id: 'not-cut', group: 'type', types: ELEMENTS, mode: 'auto', text: '피사체가 원본 이미지 밖으로 잘리지 않았다(형태가 온전하다)', detail: '원본 가장자리에 닿은 그림은 잘린 형태일 수 있어 다시 생성하는 게 안전' },
   { id: 'svg-colors', group: 'type', types: ['svg'], mode: 'auto', text: `색상이 ${SVG_MAX_COLORS}개 이하다` },
   { id: 'svg-simple', group: 'type', types: ['svg'], mode: 'manual', text: '복잡하지 않은 형태다(3D·그라데이션은 PNG로)' },
+  { id: 'expandable', group: 'type', types: ELEMENTS, mode: 'manual', text: '확장형 요소로 등록 가능한 형태(띠·라인·프레임·테두리처럼 늘려 쓰는 요소)면 일반이 아닌 “확장형”으로 제출한다', detail: '미리캔버스 전용. 일반으로 올리면 거부된 뒤 확장형 제출을 요구받음 — 확장형 요소 가이드 참고' },
   { id: 'svg-crack', group: 'type', types: ['svg'], mode: 'manual', text: '도형 사이 틈(크랙)이 보이지 않는다', detail: '확대해서 경계선 사이 흰 틈 확인' },
   { id: 'svg-no-raster', group: 'type', types: ['svg'], mode: 'auto', text: 'SVG 안에 비트맵 이미지·텍스트 객체가 없다' },
   { id: 'one-format', group: 'type', types: ELEMENTS, mode: 'auto', text: '같은 디자인을 SVG/PNG 두 타입으로 중복 업로드하지 않는다', detail: '가급적 색상 변경이 가능한 SVG 권장' },
@@ -153,12 +155,14 @@ export const PROMPT_RULES: Record<ElementType, string> = {
     'Absolutely no text, letters, numbers, logos, watermarks, signatures, brand marks.',
     'No real people likeness, no famous buildings, cars, artworks or copyrighted characters. Never write "in the style of <artist>".',
     'Friendly, commercially usable, not creepy (avoid uncanny valley).',
+    'NOT a basic shape (plain circle, star, line, arrow, speech bubble, blob, burst). Give it a clear subject and distinctive details so it cannot be replaced by a free basic element.',
   ].join('\n'),
   svg: [
     'Output: ONE single isolated subject only.',
     `Flat vector illustration, simple bold shapes, at most ${SVG_MAX_COLORS} solid colors, NO gradients, NO textures, NO shading, NO noise, NO 3D.`,
     'Pure flat white (#FFFFFF) background, no drop shadow, no frame, subject fully inside the canvas with small even padding.',
     'Thick clean outlines or clean filled shapes, few small details (it will be auto-traced to SVG).',
+    'NOT a basic shape (plain circle, star, line, arrow, speech bubble, blob, burst) — a recognizable subject with its own character and a few distinctive details.',
     'Absolutely no text, letters, numbers, logos, watermarks, brand marks, copyrighted characters, real people likeness.',
   ].join('\n'),
   background: [
