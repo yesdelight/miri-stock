@@ -41,6 +41,7 @@ export default function App() {
         <div className="spacer" />
         <button className={view === 'rules' ? 'active' : ''} onClick={() => setView('rules')}>📏 규칙</button>
         <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>⚙️ 설정</button>
+        <span className="version" title="앱 버전(배포 시각·커밋)">버전 {__BUILD__}</span>
       </nav>
       <main className="main">
         {view === 'home' && (

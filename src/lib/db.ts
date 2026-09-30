@@ -60,6 +60,8 @@ export interface StoredBlob {
   /** 예전 방식(Blob 그대로). Safari에서 저장 실패가 있어 새로 저장할 땐 data/type 사용 */
   blob?: Blob
   data?: ArrayBuffer
+  /** 최후 수단: base64 문자열(ArrayBuffer 저장도 실패하는 환경) */
+  b64?: string
   type?: string
 }
 
@@ -138,13 +140,28 @@ export const nowIso = () => new Date().toISOString()
 // Safari(맥 Dock 웹앱 포함)는 IndexedDB에 Blob/File을 넣다가
 // "Error preparing Blob/File data to be stored" 로 실패하는 경우가 있어 ArrayBuffer로 저장한다.
 export async function putBlob(itemId: string, kind: StoredBlob['kind'], blob: Blob) {
+  const key = `${itemId}:${kind}`
   const data = await blob.arrayBuffer()
-  await db.blobs.put({ key: `${itemId}:${kind}`, itemId, kind, data, type: blob.type })
+  try {
+    await db.blobs.put({ key, itemId, kind, data, type: blob.type })
+  } catch (e) {
+    console.warn('ArrayBuffer 저장 실패 → base64로 저장', e)
+    const u = new Uint8Array(data)
+    let bin = ''
+    for (let i = 0; i < u.length; i += 0x8000) bin += String.fromCharCode(...u.subarray(i, i + 0x8000))
+    await db.blobs.put({ key, itemId, kind, b64: btoa(bin), type: blob.type })
+  }
 }
 export async function getBlob(itemId: string, kind: StoredBlob['kind']): Promise<Blob | undefined> {
   const r = await db.blobs.get(`${itemId}:${kind}`)
   if (!r) return undefined
   if (r.data) return new Blob([r.data], { type: r.type ?? '' })
+  if (r.b64) {
+    const bin = atob(r.b64)
+    const u = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i)
+    return new Blob([u], { type: r.type ?? '' })
+  }
   return r.blob
 }
 export async function deleteItem(id: string) {
