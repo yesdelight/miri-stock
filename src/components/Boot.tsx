@@ -7,10 +7,10 @@ export function Splash({ msg, hide }: { msg: string; hide?: boolean }) {
   return (
     <div className={`splash ${hide ? 'hide' : ''}`} aria-busy={!hide} aria-live="polite">
       <div className="logo">
-        <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M8 22V10l8 7 8-7v12" fill="none" stroke="#fff" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" /></svg>
+        <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M9 8l7 8 7-8M16 16v9" fill="none" stroke="#fff" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" /></svg>
       </div>
-      <div className="name">Miri Stock</div>
-      <div className="sub">디자인허브 요소 작업실</div>
+      <div className="name">YESDELIGHT Stock</div>
+      <div className="sub">Stock Studio · 요소 작업실</div>
       <div className="bar"><span /></div>
       <div className="msg">{msg}</div>
     </div>

@@ -26,6 +26,16 @@ export function SettingsView() {
       {msg && <div className="note info small">{msg}</div>}
 
       <div className="card col">
+        <h3>화면</h3>
+        <div className="seg" style={{ alignSelf: 'flex-start' }}>
+          {([['auto', '자동(컴퓨터 설정)'], ['light', '라이트'], ['dark', '다크']] as const).map(([k, l]) => (
+            <button key={k} className={`small ${s.theme === k ? 'primary' : ''}`} onClick={() => updateSettings({ theme: k })}>{l}</button>
+          ))}
+        </div>
+        <p className="small muted">왼쪽 아래 해·달 버튼으로도 바꿀 수 있어요. 단축키는 <kbd>?</kbd>를 누르면 볼 수 있어요.</p>
+      </div>
+
+      <div className="card col">
         <h3>AI 연결</h3>
         <div className="note small">
           <b>구독(ChatGPT Plus · Gemini Pro · Claude Pro)과 API는 별개예요.</b> 구독만 있으면 “구독 계정 수동 모드”로 쓰세요 —

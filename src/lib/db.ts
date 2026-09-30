@@ -113,6 +113,8 @@ export interface Revenue {
   amount: number
   memo?: string
   itemId?: string
+  /** 어느 타입에서 난 수익인지(선택) — 통계의 타입별 수익 */
+  type?: ElementType
 }
 
 export const db = new Dexie('miri-stock') as Dexie & {

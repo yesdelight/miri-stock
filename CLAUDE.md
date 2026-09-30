@@ -1,4 +1,4 @@
-# Miri Stock
+# YESDELIGHT Stock Studio (저장소·폴더 이름은 miri-stock 그대로)
 
 미리캔버스 디자인허브에 올릴 **요소**(배경·PNG·SVG·동영상)를 기획→제작→검수→관리하는 개인용 웹앱. 템플릿은 다루지 않는다.
 

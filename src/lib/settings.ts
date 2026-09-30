@@ -23,6 +23,8 @@ export interface Settings {
   extraBannedWords: string
   /** 시즌 요소 제작 권장 선행 기간(일) */
   leadDays: number
+  /** 화면 테마 */
+  theme: 'auto' | 'light' | 'dark'
 }
 
 const DEFAULTS: Settings = {
@@ -43,6 +45,7 @@ const DEFAULTS: Settings = {
   driveFolderName: '[Miri] Stock',
   extraBannedWords: '',
   leadDays: 45,
+  theme: 'auto',
 }
 
 const KEY = 'miri-stock-settings'

@@ -27,12 +27,10 @@ export interface WorkbenchStart {
 }
 
 const STEPS = [
-  { name: '무엇을', hint: '주제와 타입 정하기' },
-  { name: '프롬프트', hint: 'AI에게 줄 그림 설명' },
+  { name: '기획', hint: '주제·타입 정하고 프롬프트 고르기' },
   { name: '이미지', hint: '생성하거나 파일 올리기' },
   { name: '다듬기', hint: '배경 제거·크롭·변환' },
-  { name: '제목·키워드', hint: '검색될 정보' },
-  { name: '검수·저장', hint: '규칙 확인 후 저장' },
+  { name: '검수·저장', hint: '제목·키워드 정리하고 규칙 확인' },
 ] as const
 
 const TYPE_INFO: Record<ElementType, { icon: string; desc: string }> = {
@@ -63,6 +61,17 @@ export function Workbench({ start, openWork }: { start: WorkbenchStart; openWork
   const savedSource = useRef<Blob | null>(null)
   const savedFinal = useRef<Blob | null>(null)
   const others = useLiveQuery(() => db.items.toArray(), []) ?? []
+  // 단축키: ⌘/Ctrl+Enter 다음, ⌘/Ctrl+Shift+Enter 이전, ⌘/Ctrl+S 저장
+  const keyRef = useRef<{ next?: () => void; prev?: () => void; save?: () => void }>({})
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return
+      if (e.key === 'Enter') { e.preventDefault(); (e.shiftKey ? keyRef.current.prev : keyRef.current.next)?.() }
+      else if (e.key === 's' || e.key === 'S' || e.key === 'ㄴ') { e.preventDefault(); keyRef.current.save?.() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   useEffect(() => {
     if (!start.itemId) return
@@ -81,7 +90,7 @@ export function Workbench({ start, openWork }: { start: WorkbenchStart; openWork
       setSource(src)
       setFinal(fin)
       setSaved(true)
-      setStep(lost.length ? (src ? 3 : 2) : it.status === 'making' ? 3 : 5)
+      setStep(lost.length ? (src ? 2 : 1) : it.status === 'making' ? 2 : 3)
     })()
   }, [start.itemId])
 
@@ -130,24 +139,20 @@ export function Workbench({ start, openWork }: { start: WorkbenchStart; openWork
 
   // 단계별 완료 조건 — 다음으로 넘어가기 전에 무엇이 필요한지
   const done = [
-    item.title.trim() !== '',
-    !!item.prompt?.trim(),
+    item.title.trim() !== '' && !!item.prompt?.trim(),
     !!source,
     !!final,
-    item.keywords.length > 0,
     item.status !== 'making',
   ]
   const blocker = [
-    '주제를 입력하세요',
-    '프롬프트를 입력하거나 골라 주세요',
+    !item.title.trim() ? '주제를 입력하세요' : '프롬프트를 입력하거나 골라 주세요',
     '이미지를 올리거나 생성하세요',
     '다듬기가 끝나야 해요',
-    '',
     '',
   ][step]
 
   const goto = async (n: number) => {
-    if (step === 1 && item.prompt && !item.promptLog.some((l) => l.prompt === item.prompt)) {
+    if (step === 0 && item.prompt && !item.promptLog.some((l) => l.prompt === item.prompt)) {
       patch({ promptLog: [...item.promptLog, { at: nowIso(), prompt: item.prompt, tool: 'manual' }] })
     }
     setMoving(true)
@@ -156,6 +161,12 @@ export function Workbench({ start, openWork }: { start: WorkbenchStart; openWork
     setMoving(false)
     setStep(n)
     window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  keyRef.current = {
+    next: () => { if (step < STEPS.length - 1 && done[step] && !moving) goto(step + 1) },
+    prev: () => { if (step > 0 && !moving) goto(step - 1) },
+    save: () => { trySave().then((r) => r && toast('저장했어요.')) },
   }
 
   return (
@@ -193,29 +204,39 @@ export function Workbench({ start, openWork }: { start: WorkbenchStart; openWork
         <div className="note bad small row between">
           <span>
             ⚠️ 저장돼 있던 {lostNow.includes('source') ? '원본 이미지' : '완성 파일'}를 읽을 수 없어요(예전 버전의 Safari 저장 문제).{' '}
-            {lostNow.includes('source') ? '3단계에서 원본 파일을 다시 올려 주세요. 다운로드해 둔 파일이나 AI에서 받은 이미지를 쓰면 돼요.' : '4단계에서 “다시 처리”를 누르면 원본으로 다시 만들어져요.'}
+            {lostNow.includes('source') ? '2단계에서 원본 파일을 다시 올려 주세요. 다운로드해 둔 파일이나 AI에서 받은 이미지를 쓰면 돼요.' : '3단계에서 “다시 처리”를 누르면 원본으로 다시 만들어져요.'}
           </span>
-          {step !== (lostNow.includes('source') ? 2 : 3) && (
-            <button className="small" onClick={() => goto(lostNow.includes('source') ? 2 : 3)}>{lostNow.includes('source') ? '3단계로' : '4단계로'} →</button>
+          {step !== (lostNow.includes('source') ? 1 : 2) && (
+            <button className="small" onClick={() => goto(lostNow.includes('source') ? 1 : 2)}>{lostNow.includes('source') ? '2단계로' : '3단계로'} →</button>
           )}
         </div>
       )}
 
-      {step === 0 && <PlanStep item={item} patch={patch} />}
-      {step === 1 && <PromptStep item={item} patch={patch} others={others} />}
-      {step === 2 && (
-        <SourceStep item={item} source={source} onSource={(b) => { setSource(b); setFinal(null); toast('이미지를 받았어요. 다음 단계에서 자동으로 다듬어요.') }}
-          onDirectFinal={(b) => { setSource(b); setFinal(b); setStep(item.type === 'video' ? 3 : 4); toast('파일을 받았어요.') }} />
+      {step === 0 && (
+        <div className="col" style={{ gap: 14 }}>
+          <PlanStep item={item} patch={patch} />
+          {item.title.trim() ? <PromptStep item={item} patch={patch} others={others} /> : (
+            <div className="card muted small" style={{ textAlign: 'center', padding: 24 }}>주제를 입력하면 여기서 프롬프트를 고를 수 있어요.</div>
+          )}
+        </div>
       )}
-      {step === 3 && <ProcessStep item={item} patch={patch} source={source} final={final} setFinal={setFinal} />}
-      {step === 4 && <InfoStep item={item} patch={patch} />}
-      {step === 5 && <ReviewStep item={item} patch={patch} final={final} others={others} save={trySave} openWork={openWork} goStep={goto} />}
+      {step === 1 && (
+        <SourceStep item={item} source={source} onSource={(b) => { setSource(b); setFinal(null); toast('이미지를 받았어요. 다음 단계에서 자동으로 다듬어요.') }}
+          onDirectFinal={(b) => { setSource(b); setFinal(b); setStep(item.type === 'video' ? 2 : 3); toast('파일을 받았어요.') }} />
+      )}
+      {step === 2 && <ProcessStep item={item} patch={patch} source={source} final={final} setFinal={setFinal} />}
+      {step === 3 && (
+        <div className="col" style={{ gap: 14 }}>
+          <InfoStep item={item} patch={patch} />
+          <ReviewStep item={item} patch={patch} final={final} others={others} save={trySave} openWork={openWork} goStep={goto} />
+        </div>
+      )}
 
       <div className="bottombar">
         <button onClick={() => goto(step - 1)} disabled={step === 0 || moving}>← 이전</button>
         <span className="small muted grow" style={{ textAlign: 'center' }}>{!done[step] && blocker}</span>
         {step < STEPS.length - 1 && (
-          <button className="primary" onClick={() => goto(step + 1)} disabled={moving || (!done[step] && step < 4)}>
+          <button className="primary" onClick={() => goto(step + 1)} disabled={moving || !done[step]}>
             {moving ? '저장 중…' : `다음: ${STEPS[step + 1].name} →`}
           </button>
         )}
@@ -483,7 +504,7 @@ function SourceStep({ item, source, onSource, onDirectFinal }: {
 function ProcessStep({ item, patch, source, final, setFinal }: {
   item: Item; patch: (p: Partial<Item>) => void; source: Blob | null; final: Blob | null; setFinal: (b: Blob | null) => void
 }) {
-  if (!source) return <div className="card"><p className="muted">3단계에서 이미지를 먼저 올려 주세요.</p></div>
+  if (!source) return <div className="card"><p className="muted">2단계에서 이미지를 먼저 올려 주세요.</p></div>
   if (item.type === 'video') return <VideoProcess item={item} patch={patch} final={final} />
   if (item.type === 'background') return <BackgroundProcess item={item} patch={patch} source={source} final={final} setFinal={setFinal} />
   return <ElementProcess item={item} patch={patch} source={source} final={final} setFinal={setFinal} />
@@ -779,9 +800,9 @@ function InfoStep({ item, patch }: { item: Item; patch: (p: Partial<Item>) => vo
 // ---------- 6. 검수·저장 ----------
 // 검수 항목 → 고치러 갈 단계(0부터)
 const FIX_STEP: Record<string, number> = {
-  spec: 3, 'tight-crop': 3, 'bg-removed': 3, 'single-object': 3, 'not-cut': 2, 'no-transparency': 3,
-  'svg-colors': 3, 'svg-no-raster': 3, 'bg-rect': 3, 'no-names': 4, 'own-prompt': 1, 'no-prompt-abuse': 1,
-  'no-recolor': 2, 'one-format': 0,
+  spec: 2, 'tight-crop': 2, 'bg-removed': 2, 'single-object': 2, 'not-cut': 1, 'no-transparency': 2,
+  'svg-colors': 2, 'svg-no-raster': 2, 'bg-rect': 2, 'own-prompt': 0, 'no-prompt-abuse': 0,
+  'no-recolor': 1, 'one-format': 0,
 }
 
 function ReviewStep({ item, patch, final, others, save, openWork, goStep }: {
@@ -793,6 +814,17 @@ function ReviewStep({ item, patch, final, others, save, openWork, goStep }: {
   const [reviewImg, setReviewImg] = useState<{ mime: string; base64: string } | null>(null)
   const url = useObjectUrl(final)
   const rules = rulesFor(item.type)
+  const topic = (item.theme || item.title).trim()
+  const leftPrompts = useLiveQuery(() => db.promptBank.where('key').equals(promptKey(item.type, topic)).filter((p) => !p.usedBy).count(), [item.type, topic]) ?? 0
+  // 지금까지 거부된 이유 TOP 3 — 같은 실수 방지
+  const topReasons = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const o of others) {
+      const r = o.status === 'rejected' ? o.rejectReason?.trim() : ''
+      if (r) m.set(r, (m.get(r) ?? 0) + 1)
+    }
+    return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3)
+  }, [others])
 
   const run = async () => {
     setRunning(true)
@@ -812,7 +844,7 @@ function ReviewStep({ item, patch, final, others, save, openWork, goStep }: {
     } catch (e) {
       // 예전 검사 결과를 그대로 보여주지 않고, 파일을 못 읽었다고 알림
       console.error(e)
-      patch({ autoChecks: [{ ruleId: 'spec', ok: false, message: `최종 파일을 읽지 못했어요(${(e as Error)?.message || e}). 4단계 “다듬기”에서 다시 처리해 주세요.` }] })
+      patch({ autoChecks: [{ ruleId: 'spec', ok: false, message: `최종 파일을 읽지 못했어요(${(e as Error)?.message || e}). 3단계 “다듬기”에서 다시 처리해 주세요.` }] })
     } finally { setRunning(false) }
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -874,7 +906,7 @@ function ReviewStep({ item, patch, final, others, save, openWork, goStep }: {
               <label className="inline small"><input type="checkbox" checked={!!item.manualChecks[`ack:${r.id}`]} onChange={(e) => setChecks([`ack:${r.id}`], e.target.checked)} />직접 봤는데 괜찮아요</label>
             )}
             {c && c.ok !== true && FIX_STEP[r.id] != null && (
-              <button className="small" onClick={() => goStep(item.type === 'video' && r.id === 'spec' ? 2 : FIX_STEP[r.id])}>고치러 가기 →</button>
+              <button className="small" onClick={() => goStep(item.type === 'video' && r.id === 'spec' ? 1 : FIX_STEP[r.id])}>고치러 가기 →</button>
             )}
           </div>
         </div>
@@ -888,7 +920,7 @@ function ReviewStep({ item, patch, final, others, save, openWork, goStep }: {
         <div className="card col">
           <div className="canvasbox outline" style={{ minHeight: 200 }}>
             {url && (item.type === 'video' ? <video src={url} controls /> : <img src={url} alt="최종 파일" />)}
-            {!url && <span className="muted small">최종 파일이 없어요 — 4단계를 먼저 하세요.</span>}
+            {!url && <span className="muted small">최종 파일이 없어요 — 3단계 “다듬기”를 먼저 하세요.</span>}
           </div>
           <div className="row between">
             <span className="small muted">{item.width && `${item.width}×${item.height}px · `}{fmtBytes(final?.size)}</span>
@@ -921,8 +953,27 @@ function ReviewStep({ item, patch, final, others, save, openWork, goStep }: {
             <button className="small" onClick={() => copyText(item.keywords.join(', ')).then(() => toast('키워드 복사됨', 'info'))} disabled={!item.keywords.length}>📋 키워드 복사</button>
             {item.driveLink && <a href={item.driveLink} target="_blank" rel="noreferrer" className="small">Drive에서 보기 ↗</a>}
           </div>
-          {item.status !== 'making' && <button className="small ghost" style={{ alignSelf: 'flex-start' }} onClick={() => openWork({ topic: item.theme, type: item.type })}>＋ 같은 주제로 하나 더 만들기</button>}
         </div>
+
+        {item.status !== 'making' && (
+          <button className="next-card" onClick={() => openWork({ topic, type: item.type, notes: item.notes })}>
+            <span className="nc-ic">🔁</span>
+            <span className="col" style={{ gap: 2, alignItems: 'flex-start' }}>
+              <b>같은 주제로 다음 거 만들기</b>
+              <span className="small muted">“{topic}” {TYPE_LABEL[item.type]}{leftPrompts > 0 ? ` · 남은 추천 프롬프트 ${leftPrompts}개로 바로 시작` : ' · 새 프롬프트를 추천받아 시작'}</span>
+            </span>
+            <span className="nc-go">→</span>
+          </button>
+        )}
+
+        {topReasons.length > 0 && (
+          <div className="note warn small">
+            <b>⚠️ 지금까지 자주 거부된 이유</b> — 올리기 전에 한 번 더 확인하세요
+            <ol style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+              {topReasons.map(([r, n]) => <li key={r}>{r} <span className="muted">({n}번)</span></li>)}
+            </ol>
+          </div>
+        )}
 
         <div className="card col">
           <h3>🤖 자동 검수</h3>

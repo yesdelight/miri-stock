@@ -1,4 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
+import { Download, Trash2, UploadCloud } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { toast } from '../components/toast'
 import { Modal, TypeBadge, useObjectUrl } from '../components/ui'
@@ -38,8 +39,8 @@ function statusPatch(item: Item, to: ItemStatus, reason?: string): Partial<Item>
 
 type Sort = 'new' | 'old' | 'name' | 'status'
 
-export function Library({ openWork }: { openWork: (s: Omit<WorkbenchStart, 'key'>) => void }) {
-  const [status, setStatus] = useState<'all' | ItemStatus>('all')
+export function Library({ openWork, initialStatus }: { openWork: (s: Omit<WorkbenchStart, 'key'>) => void; initialStatus?: ItemStatus }) {
+  const [status, setStatus] = useState<'all' | ItemStatus>(initialStatus ?? 'all')
   const [type, setType] = useState<'all' | ElementType>('all')
   const [drive, setDrive] = useState<'all' | 'saved' | 'unsaved'>('all')
   const [sort, setSort] = useState<Sort>('new')
@@ -200,9 +201,9 @@ export function Library({ openWork }: { openWork: (s: Omit<WorkbenchStart, 'key'
           <div className="ab-group">
             {busy ? <b className="small">{busy}</b> : (
               <>
-                <button onClick={bulkDrive}>☁️ Drive</button>
-                <button onClick={bulkDownload}>⬇ 받기</button>
-                <button className="danger" onClick={bulkDelete}>🗑</button>
+                <button onClick={bulkDrive}><UploadCloud size={15} />Drive</button>
+                <button onClick={bulkDownload}><Download size={15} />받기</button>
+                <button className="danger" onClick={bulkDelete} title="삭제"><Trash2 size={15} /></button>
               </>
             )}
           </div>
