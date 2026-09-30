@@ -3,7 +3,7 @@ import type { CheckResult, Item } from './db'
 import { analyzeAlpha, blobBytes, blobToCanvas, hamming, readDpi } from './imaging'
 import { ASPECTS, BANNED_WORDS, CROP_MARGIN_MAX_RATIO, SPECS, SVG_MAX_COLORS, TYPE_LABEL, type AspectId, type ElementType } from './rules'
 import { getSettings } from './settings'
-import { fmtBytes, jaccard } from './utils'
+import { fmtBytes, jaccard, MB } from './utils'
 import { analyzeSvg, svgToCanvas } from './vectorize'
 
 export interface CheckInput {
@@ -99,7 +99,7 @@ export async function runAutoChecks(inp: CheckInput): Promise<CheckResult[]> {
 
   if (inp.file.type !== spec.mime) fail(`확장자: ${spec.ext.toUpperCase()}여야 해요 (현재 ${inp.file.type || '알 수 없음'})`)
   else pass(`확장자 ${spec.ext.toUpperCase()}`)
-  if (inp.file.size > spec.maxMB * 1024 * 1024) fail(`용량 ${fmtBytes(inp.file.size)} > 최대 ${spec.maxMB}MB`)
+  if (inp.file.size > spec.maxMB * MB) fail(`용량 ${fmtBytes(inp.file.size)} > 최대 ${spec.maxMB}MB`)
   else pass(`용량 ${fmtBytes(inp.file.size)} (최대 ${spec.maxMB < 1 ? spec.maxMB * 1000 + 'KB' : spec.maxMB + 'MB'})`)
 
   if (inp.type === 'video') {

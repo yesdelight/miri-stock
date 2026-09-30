@@ -19,11 +19,14 @@ export function daysBetween(a: string, b: string) {
   return Math.round((parseYmd(b).getTime() - parseYmd(a).getTime()) / 86400000)
 }
 
+/** 용량 한도는 10진수 기준(1MB = 1,000,000B)으로 판정 — 1024 기준보다 엄격해서 어느 쪽이든 통과 */
+export const MB = 1_000_000
+
 export function fmtBytes(n?: number) {
   if (n == null) return '-'
-  if (n < 1024) return `${n} B`
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
-  return `${(n / 1024 / 1024).toFixed(2)} MB`
+  if (n < 1000) return `${n} B`
+  if (n < MB) return `${(n / 1000).toFixed(1)} KB`
+  return `${(n / MB).toFixed(2)} MB`
 }
 
 export function fmtWon(n: number) {

@@ -13,7 +13,7 @@ import {
 import { imagePromptsRequest, metadataRequest, reviewRequest } from '../lib/prompts'
 import { ASPECTS, GROUP_LABEL, PROMPT_RULES, rulesFor, SPECS, TYPE_FOLDER, TYPE_LABEL, type AspectId, type ElementType } from '../lib/rules'
 import { useSettings, type Provider } from '../lib/settings'
-import { copyText, downloadBlob, extractJson, fmtBytes, safeFileName, ymd } from '../lib/utils'
+import { copyText, downloadBlob, extractJson, fmtBytes, MB, safeFileName, ymd } from '../lib/utils'
 import { DEFAULT_TRACE, svgToCanvas, traceToSvg, type TraceOptions } from '../lib/vectorize'
 
 export interface WorkbenchStart {
@@ -389,7 +389,7 @@ function ElementProcess({ item, patch, source, final, setFinal, next }: {
           <div className="card col">
             <b className="small">② 최종 {item.type === 'svg' ? 'SVG' : 'PNG'}</b>
             <div className="canvasbox outline">{finalUrl ? <img src={finalUrl} alt="최종 결과" /> : <span className="muted small">{item.type === 'svg' ? '“SVG 변환”을 누르세요' : '①을 적용하면 생성'}</span>}</div>
-            {final && <span className="small muted">{item.width}×{item.height}px · {fmtBytes(final.size)} {item.type === 'svg' && final.size > 150_000 && <b style={{ color: 'var(--bad)' }}>— 150KB 초과! 추적 해상도를 낮추거나 노이즈 제거를 올리세요</b>}</span>}
+            {final && <span className="small muted">{item.width}×{item.height}px · {fmtBytes(final.size)} {item.type === 'svg' && final.size > SPECS.svg.maxMB * MB && <b style={{ color: 'var(--bad)' }}>— 150KB 초과! 추적 해상도를 낮추거나 노이즈 제거를 올리세요</b>}</span>}
           </div>
         </div>
         <p className="small muted">빨간 점선 = 이미지 경계. 점선과 그림 사이에 여백이 거의 없어야 해요. 체크무늬가 보이는 곳이 투명 영역이에요.</p>

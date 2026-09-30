@@ -73,7 +73,7 @@ export function SettingsView() {
         <h3>Google Drive</h3>
         <p className="small muted">
           Google Cloud Console → API 및 서비스 → OAuth 클라이언트 ID(웹 애플리케이션) 만들기 → “승인된 JavaScript 원본”에 이 앱 주소 추가 → Drive API 사용 설정.
-          테스트 모드로 두고 본인 계정을 테스트 사용자로 넣으면 돼요. 파일은 <b>{s.driveFolderName}</b> / 배경·PNG·SVG·동영상 / 연-월 폴더에 저장돼요.
+          테스트 모드로 두고 본인 계정을 테스트 사용자로 넣으면 돼요. 파일은 <b>{s.driveFolderName}</b> / 배경·PNG 요소·SVG 요소·동영상 / 연-월 폴더에 저장돼요.
         </p>
         <div className="grid g2">
           {field('googleClientId', 'OAuth 클라이언트 ID', 'text', '…apps.googleusercontent.com')}

@@ -13,8 +13,8 @@ export const TYPE_LABEL: Record<ElementType, string> = {
 
 export const TYPE_FOLDER: Record<ElementType, string> = {
   background: '배경',
-  png: 'PNG',
-  svg: 'SVG',
+  png: 'PNG 요소',
+  svg: 'SVG 요소',
   video: '동영상',
 }
 
